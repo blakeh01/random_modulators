@@ -8,8 +8,9 @@ import matplotlib.pyplot as plt
 
 from scipy import signal
 from scipy.io import wavfile
-from scipy.signal import butter, sosfilt, firwin
+from commpy import rrcosfilter
 
+from tools.eye_diagram import plot_eye
 
 # => DATA GENERATION - PULSE TRAINS AND PULSE SHAPING
 
@@ -48,7 +49,7 @@ plt.grid(True)
 plt.show()
 
 # RRC Matched Filter
-samples = np.convolve(sig, h_rcc, 'full')
+samples = np.convolve(sig, h_rcc)
 plt.figure(2)
 plt.plot(samples, '.-')
 for i in range(num_symbols):
@@ -87,13 +88,12 @@ plt.grid(True)
 plt.show()
 
 # => BEGIN CHANNEL SIMULATION
-Fs, samples = wavfile.read("BPSK_received_wave.wav")
-print(np.shape(samples))
+Fs, samples = wavfile.read("BPSK_modulated_wave.wav")
 
 # samples = np.divide(samples, 32767)
 # print(f"largest sample amp: {np.max(samples)}")
 
-add_noise = False
+add_noise = True
 gain_control = False
 remove_carrier = True
 
@@ -186,6 +186,8 @@ plt.ylabel("Quadrature Component")
 plt.grid()
 plt.show()
 
+plot_eye(np.real(samples), np.imag(samples), L, "Raw Eye Diagram")
+
 # ==> BEGIN DEMODULATION
 
 # TIME SYNC - Mueller and muller clock recovery
@@ -233,6 +235,8 @@ ax2.grid()
 plt.xlabel("In-phase Component")
 plt.ylabel("Quadrature Component")
 plt.show()
+
+plot_eye(np.real(out), np.imag(out), L, "After Timing Correction Eye Diagram")
 
 # if True:
 #     from matplotlib.animation import FuncAnimation
@@ -322,5 +326,8 @@ plt.xlabel("In-phase Component")
 plt.ylabel("Quadrature Component")
 plt.grid()
 plt.show()
+
+plot_eye(np.real(out), np.imag(out), L, "After Costas Loop Eye Diagram")
+
 
 # ANIMATE M&M LOOP
