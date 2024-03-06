@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 from scipy import signal
 from scipy.io import wavfile
 
+import tools.eye_diagram
+
 # => DATA GENERATION - PULSE TRAINS AND PULSE SHAPING
 
 num_symbols = 2400  # Number of symbols
@@ -58,7 +60,7 @@ plt.show()
 
 # Create our raised-cosine filter
 num_taps = 101
-beta = 0.35
+beta = 0.75
 t = np.arange(num_taps) - (num_taps - 1) // 2
 h_rcc = np.sinc(t / L) * np.cos(np.pi * beta * t / L) / (1 - (2 * beta * t / L) ** 2)
 plt.figure(1)
@@ -82,14 +84,14 @@ plt.plot(samples_I, '.-')
 for i in range(num_symbols):
     plt.plot([i * L + num_taps // 2, i * L + num_taps // 2], [0, samples_I[i * L + num_taps // 2]])
 plt.grid(True)
-plt.title("RRC Filtered I")
+plt.title("RRC Filtecolor_code[1] I")
 
 plt.subplot(1, 2, 2)
 plt.plot(samples_Q, '.-')
 for i in range(num_symbols):
     plt.plot([i * L + num_taps // 2, i * L + num_taps // 2], [0, samples_Q[i * L + num_taps // 2]])
 plt.grid(True)
-plt.title("RRC Filtered Q")
+plt.title("RRC Filtecolor_code[1] Q")
 plt.show()
 
 # create I + Q
@@ -133,8 +135,8 @@ print(np.shape(samples))
 # samples = np.divide(samples, 32767)
 # print(f"largest sample amp: {np.max(samples)}")
 
-add_noise = False
-gain_control = False
+add_noise = True
+gain_control = True
 remove_carrier = True
 
 assert Fs == 48000
@@ -150,7 +152,7 @@ if remove_carrier:
     demod_Q = samples * local_oscillator_Q * 2
 
     # Low-pass filtering
-    cutoff_frequency = 4000  # Hz
+    cutoff_frequency = 4500  # Hz
     filter_length = 101  # Filter length, make it odd
 
     nyquist_frequency = 0.5 * Fs  # Nyquist frequency
@@ -210,7 +212,7 @@ if add_noise:
     samples = np.convolve(samples, h)  # apply filter
 
     # Apply a freq offset
-    fo = 100  # simulate freq offset
+    fo = 50  # simulate freq offset
     Ts = 1 / Fs  # calc sample period
     t = np.arange(0, Ts * len(samples), Ts)  # create time vector
 
@@ -226,10 +228,12 @@ plt.ylabel("Quadrature Component")
 plt.grid()
 plt.show()
 
+tools.eye_diagram.plot_eye(np.real(samples), np.imag(samples), L)
+
 # ==> BEGIN DEMODULATION
 
 # TIME SYNC - Mueller and muller clock recovery
-interp_factor = 128
+interp_factor = 1024
 samples_interpolated = signal.resample_poly(samples, interp_factor, 1)
 
 mu = 0  # initial estimate of phase of sample
@@ -246,7 +250,7 @@ while i_out < len(samples) and i_in < len(samples):
     mm_val = np.real(y - x)
     mm_val = min(mm_val, 4.0)  # For the sake of there being less code to explain
     mm_val = max(mm_val, -4.0)
-    mu += L + 0.4 * mm_val
+    mu += L + 0.1 * mm_val
     i_in += int(np.floor(mu))  # round down to nearest int since we are using it as an index
     mu = mu - np.floor(mu)  # remove the integer part of mu
     i_out += 1  # increment output index
@@ -267,33 +271,32 @@ plt.xlabel("In-phase Component")
 plt.ylabel("Quadrature Component")
 ax1.grid()
 
-color_code = {}
-red = []
-blue =[]
-green = []
-magenta = []
+color_code = {1:[],2:[],3:[],4:[]}
 for i in out[32:-8]:
     based = np.real(i)
     liberal = np.imag(i)
     if (based>0 and liberal>0):
-        red.append(i)
+        color_code[1].append(i)
     elif(based <0 and liberal>0):
-        blue.append(i)
+        color_code[2].append(i)
     elif (based<0 and liberal<0):
-        green.append(i)
+        color_code[3].append(i)
     elif(based >0 and liberal<0):
-        magenta.append(i)
+        color_code[4].append(i)
 
-ax2.plot(np.real(red), np.imag(red), '.','r')  # leave out the ones at beginning, before sync finished
-ax2.plot(np.real(blue), np.imag(blue), '.','b')  # leave out the ones at beginning, before sync finished
-ax2.plot(np.real(green), np.imag(green), '.','g')  # leave out the ones at beginning, before sync finished
-ax2.plot(np.real(magenta), np.imag(magenta), '.','m')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(color_code[1]), np.imag(color_code[1]), '.','r')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(color_code[2]), np.imag(color_code[2]), '.','b')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(color_code[3]), np.imag(color_code[3]), '.','g')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(color_code[4]), np.imag(color_code[4]), '.','m')  # leave out the ones at beginning, before sync finished
 plt.axis([-4, 4, -4, 4])
 ax2.set_title('After Time Sync')
 ax2.grid()
 plt.xlabel("In-phase Component")
 plt.ylabel("Quadrature Component")
 plt.show()
+
+tools.eye_diagram.plot_eye(np.real(out), np.imag(out), L)
+
 
 # if True:
 #     from matplotlib.animation import FuncAnimation
@@ -323,22 +326,14 @@ plt.show()
 samples = out  # copy for plotting
 
 
-def phase_detector_4(sample):
-    if sample.real > 0:
-        a = 1.0
-    else:
-        a = -1.0
-    if sample.imag > 0:
-        b = 1.0
-    else:
-        b = -1.0
-    return a * sample.imag - b * sample.real
+def phase_detector_16(sample):
+    return np.sign(np.real(sample))*np.imag(sample) - np.sign(np.imag(sample))*np.real(sample)
 
 
 N = len(samples)
 phase = 0
 freq = 0
-loop_bw = 0.1  # This is what to adjust, to make the feedback loop faster or slower (which impacts stability)
+loop_bw = 0.125  # This is what to adjust, to make the feedback loop faster or slower (which impacts stability)
 damping = np.sqrt(2.0) / 2.0  # Set the damping factor for a critically damped system
 alpha = (4 * damping * loop_bw) / (1.0 + (2.0 * damping * loop_bw) + loop_bw ** 2)
 beta = (4 * loop_bw ** 2) / (1.0 + (2.0 * damping * loop_bw) + loop_bw ** 2)
@@ -350,7 +345,7 @@ phase_shifts = []
 for i in range(N):
     out[i] = samples[i] * np.exp(-1j * phase)  # adjust the input sample by the inverse of the estimated phase offset
 
-    error = phase_detector_4(out[i])  # This is the error formula for 4th order Costas Loop (e.g. for QPSK)
+    error = phase_detector_16(out[i])  # This is the error formula for 4th order Costas Loop (e.g. for QPSK)
 
     # Limit error to the range -1 to 1
     error = min(error, 1.0)
@@ -371,23 +366,24 @@ for i in range(N):
     # Limit frequency to range -1 to 1
     freq = min(freq, 1.0)
     freq = max(freq, -1.0)
-red_count =0
-blue_count = 0
-green_count = 0
-magenta_count = 0
+
+color_code1_count =0
+color_code2_count = 0
+color_code3_count = 0
+color_code4_count = 0
 for index,i in enumerate(samples):
-    if i in red:
-        red[red_count] = red[red_count]*phase_shifts[index]
-        red_count += 1
-    elif i in blue:
-        blue[blue_count] = blue[blue_count]*phase_shifts[index]
-        blue_count += 1
-    elif i in green:
-        green[green_count] = green[green_count]*phase_shifts[index]
-        green_count += 1
-    elif i in magenta:
-        magenta[magenta_count] = magenta[magenta_count]*phase_shifts[index]
-        magenta_count += 1
+    if i in color_code[1]:
+        color_code[1][color_code1_count] = color_code[1][color_code1_count]*phase_shifts[index]
+        color_code1_count += 1
+    elif i in color_code[2]:
+        color_code[2][color_code2_count] = color_code[2][color_code2_count]*phase_shifts[index]
+        color_code2_count += 1
+    elif i in color_code[3]:
+        color_code[3][color_code3_count] = color_code[3][color_code3_count]*phase_shifts[index]
+        color_code3_count += 1
+    elif i in color_code[4]:
+        color_code[4][color_code4_count] = color_code[4][color_code4_count]*phase_shifts[index]
+        color_code4_count += 1
 fig, (ax1, ax2) = plt.subplots(2, figsize=(7, 5))  # 7 is nearly full width
 fig.tight_layout(pad=2.0)  # add space between subplots
 ax1.plot(np.real(samples), '.-')
@@ -408,10 +404,10 @@ ax.set_xlabel('Sample')
 ax.set_ylabel('Freq Offset')
 plt.show()
 
-plt.plot(np.real(red), np.imag(red), '.','r')  # leave out the ones at beginning, before sync finished
-plt.plot(np.real(blue), np.imag(blue), '.','b')  # leave out the ones at beginning, before sync finished
-plt.plot(np.real(green), np.imag(green), '.','g')  # leave out the ones at beginning, before sync finished
-plt.plot(np.real(magenta), np.imag(magenta), '.','m')  # leave out the ones at beginning, before sync finished
+plt.plot(np.real(color_code[1]), np.imag(color_code[1]), '.','r')  # leave out the ones at beginning, before sync finished
+plt.plot(np.real(color_code[2]), np.imag(color_code[2]), '.','b')  # leave out the ones at beginning, before sync finished
+plt.plot(np.real(color_code[3]), np.imag(color_code[3]), '.','g')  # leave out the ones at beginning, before sync finished
+plt.plot(np.real(color_code[4]), np.imag(color_code[4]), '.','m')  # leave out the ones at beginning, before sync finished
 #plt.axis([-4, 4, -4, 4])
 plt.title('Corrected RX Constellation Map')
 plt.xlabel("In-phase Component")
