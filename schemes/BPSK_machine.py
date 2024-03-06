@@ -8,13 +8,12 @@ import matplotlib.pyplot as plt
 
 from scipy import signal
 from scipy.io import wavfile
-from commpy import rrcosfilter
 
 from tools.eye_diagram import plot_eye
 
 # => DATA GENERATION - PULSE TRAINS AND PULSE SHAPING
 
-num_symbols = 2400  # Number of symbols
+num_symbols = 1200  # Number of symbols
 Fs = 48000  # Sampling rate
 Tsym = 1 / 4800  # Symbol period
 L = int(Fs * Tsym)  # Upsampling rate, L samples per symbol

@@ -267,7 +267,27 @@ plt.xlabel("In-phase Component")
 plt.ylabel("Quadrature Component")
 ax1.grid()
 
-ax2.plot(np.real(out[32:-8]), np.imag(out[32:-8]), '.')  # leave out the ones at beginning, before sync finished
+color_code = {}
+red = []
+blue =[]
+green = []
+magenta = []
+for i in out[32:-8]:
+    based = np.real(i)
+    liberal = np.imag(i)
+    if (based>0 and liberal>0):
+        red.append(i)
+    elif(based <0 and liberal>0):
+        blue.append(i)
+    elif (based<0 and liberal<0):
+        green.append(i)
+    elif(based >0 and liberal<0):
+        magenta.append(i)
+
+ax2.plot(np.real(red), np.imag(red), '.','r')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(blue), np.imag(blue), '.','b')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(green), np.imag(green), '.','g')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(magenta), np.imag(magenta), '.','m')  # leave out the ones at beginning, before sync finished
 plt.axis([-4, 4, -4, 4])
 ax2.set_title('After Time Sync')
 ax2.grid()
@@ -326,6 +346,7 @@ print("alpha:", alpha)
 print("beta:", beta)
 out = np.zeros(N, dtype=np.complex64)
 freq_log = []
+phase_shifts = []
 for i in range(N):
     out[i] = samples[i] * np.exp(-1j * phase)  # adjust the input sample by the inverse of the estimated phase offset
 
@@ -334,6 +355,7 @@ for i in range(N):
     # Limit error to the range -1 to 1
     error = min(error, 1.0)
     error = max(error, -1.0)
+    phase_shifts.append(np.exp(-1j*phase))
 
     # Advance the loop (recalc phase and freq offset)
     freq += (beta * error)
@@ -349,7 +371,23 @@ for i in range(N):
     # Limit frequency to range -1 to 1
     freq = min(freq, 1.0)
     freq = max(freq, -1.0)
-
+red_count =0
+blue_count = 0
+green_count = 0
+magenta_count = 0
+for index,i in enumerate(samples):
+    if i in red:
+        red[red_count] = red[red_count]*phase_shifts[index]
+        red_count += 1
+    elif i in blue:
+        blue[blue_count] = blue[blue_count]*phase_shifts[index]
+        blue_count += 1
+    elif i in green:
+        green[green_count] = green[green_count]*phase_shifts[index]
+        green_count += 1
+    elif i in magenta:
+        magenta[magenta_count] = magenta[magenta_count]*phase_shifts[index]
+        magenta_count += 1
 fig, (ax1, ax2) = plt.subplots(2, figsize=(7, 5))  # 7 is nearly full width
 fig.tight_layout(pad=2.0)  # add space between subplots
 ax1.plot(np.real(samples), '.-')
@@ -370,8 +408,11 @@ ax.set_xlabel('Sample')
 ax.set_ylabel('Freq Offset')
 plt.show()
 
-plt.plot(np.real(out), np.imag(out), '.')
-plt.axis([-4, 4, -4, 4])
+plt.plot(np.real(red), np.imag(red), '.','r')  # leave out the ones at beginning, before sync finished
+plt.plot(np.real(blue), np.imag(blue), '.','b')  # leave out the ones at beginning, before sync finished
+plt.plot(np.real(green), np.imag(green), '.','g')  # leave out the ones at beginning, before sync finished
+plt.plot(np.real(magenta), np.imag(magenta), '.','m')  # leave out the ones at beginning, before sync finished
+#plt.axis([-4, 4, -4, 4])
 plt.title('Corrected RX Constellation Map')
 plt.xlabel("In-phase Component")
 plt.ylabel("Quadrature Component")
