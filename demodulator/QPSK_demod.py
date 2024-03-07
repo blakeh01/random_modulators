@@ -39,13 +39,20 @@ def callback(indata, frames, time, status):
 
     if recording and np.max(indata) < MIN_VOLUME:
         print("Volume below minimum detected. Stopping recording...")
+        recording = False
         sd.stop()  # Stop recording
 
 
 while True:
     print("Waiting for signal...")
     with sd.InputStream(channels=CHANNELS, callback=callback, dtype=FORMAT, blocksize=CHUNK):
-        sd.sleep(RECORD_SECONDS * 1000)  # Sleep for the desired recording duration
+        sd.sleep(-1)  # Sleep indefinitely until interrupted
+
+    frames = [frame for frame in frames_list if len(frame) > 0]
+    frames = np.concatenate(frames) if frames else np.array([])
+
+    # Write the recorded frames to a WAV file
+    wavfile.write(WAVE_OUTPUT_FILENAME, Fs, frames)
 
     print("Processing signal...")
     Fs, samples = wavfile.read("received_wave.wav")
