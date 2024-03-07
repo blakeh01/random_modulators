@@ -249,7 +249,7 @@ class MainWindow(QWidget):
         try:
             long_arr = get_QPSK_from_data(nums)
             print(nums)
-            sf.write("QPSK.wav", long_arr, Fs)
+            sf.write("../schemes/erik_QPSK.wav", long_arr, Fs)
             print("wrote to file")
             self.symbol_time.setText("")
             self.textbox.setText("")

@@ -34,11 +34,12 @@ def get_QPSK_from_data(data):
     ascii_bits = np.array([])
     for i in data:
         temp = [1, 1]
-        if (i == 1 or i == 1):
+        if i == 1 or i == 2:
             temp[0] = 0
-        if (i == 2 or i == 3):
+        if i == 2 or i == 3:
             temp[1] = 0
         ascii_bits = np.concatenate([ascii_bits, temp])
+
     sync_symbols = np.ones(100)  # 100 sync symbols
     sync_bits = np.random.randint(0, 2,
                                   500)  # 500 random alternating 1's and 0's (todo: change, chance @ getting preamble)
@@ -220,7 +221,7 @@ class MainWindow(QWidget):
         try:
             long_arr = get_QPSK_from_data(nums)
             print(nums)
-            sf.write("QPSK.wav", long_arr, Fs)
+            sf.write("../schemes/erik_QPSK.wav", long_arr, Fs)
             time = len(long_arr) / Fs
             sd.play(long_arr, Fs)
             print("wrote to file")
