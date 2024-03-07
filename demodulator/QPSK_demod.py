@@ -81,7 +81,7 @@ while True:
     if remove_carrier:
         # Define local oscillator components (in-phase and quadrature)
         t = np.linspace(0, len(samples) / Fs, len(samples))
-        ps = np.pi
+        ps = 0
         local_oscillator_I = np.cos(2 * np.pi * f_c * t + ps)
         local_oscillator_Q = np.sin(2 * np.pi * f_c * t + ps)
 
