@@ -135,11 +135,11 @@ plt.grid(True)
 plt.show()
 
 # => BEGIN CHANNEL SIMULATION
-Fs, samples = wavfile.read("QPSK_received_wave.wav")
+Fs, samples = wavfile.read("erik_QPSK.wav")
 print(np.shape(samples))
 
-# samples = np.divide(samples, 32767)
-# print(f"largest sample amp: {np.max(samples)}")
+samples = np.divide(samples, 32767)
+print(f"largest sample amp: {np.max(samples)}")
 
 add_noise = False
 gain_control = True
@@ -404,11 +404,11 @@ plt.show()
 
 # Define QPSK constellation points
 QPSK_constellation = {
-    -1-1j: '00',
-    -1+1j: '01',
-    1-1j: '10',
-    1+1j: '11',
-    0+0j: '00'
+    -1 - 1j: '10',
+    -1 + 1j: '01',
+    1 - 1j: '11',
+    1 + 1j: '00',
+    0 + 0j: '00'
 }
 
 

@@ -1,37 +1,26 @@
 import os
 import numpy as np
-import matplotlib as plt
+import matplotlib.pyplot as plt
+from scipy.io import wavfile
+import sys
 import soundfile as sf
 import sounddevice as sd
-import sys
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 
-Fs = 48000
-carrier_freq = Fs / 10
-Tsym = 1 * 10 ** -3
-Fsym = 1 / Tsym
-L = int(Fs * Tsym)  # Up-sampling rate, L samples per symbol
-f_c = 5000
+import tools.eye_diagram
+
+# => DATA GENERATION - PULSE TRAINS AND PULSE SHAPING
+
 Fs = 48000  # Sampling rate
 Tsym = 1 / 4800  # Symbol period
 L = int(Fs * Tsym)  # Up-sampling rate, L samples per symbol
 f_c = 5000
-symbol_time = 5  # time in milis
-global Time_elapsed
-Time_elapsed = 0
-
-
-def generate_sig(amplitudes, symbol_time):
-    global Time_elapsed
-    t0 = np.arange(Time_elapsed, Time_elapsed + (Tsym * symbol_time), (1 / Fs))
-    Time_elapsed = Time_elapsed + symbol_time * Tsym
-    return amplitudes[0] * np.cos(2 * np.pi * carrier_freq * t0) + amplitudes[1] * np.sin(2 * np.pi * carrier_freq * t0)
-
 
 def get_QPSK_from_data(data):
     ascii_bits = np.array([])
+
     for i in data:
         temp = [1, 1]
         if (i == 1 or i == 1):
@@ -39,14 +28,17 @@ def get_QPSK_from_data(data):
         if (i == 2 or i == 3):
             temp[1] = 0
         ascii_bits = np.concatenate([ascii_bits, temp])
+
     sync_symbols = np.ones(100)  # 100 sync symbols
-    sync_bits = np.random.randint(0, 2,
-                                  500)  # 500 random alternating 1's and 0's (todo: change, chance @ getting preamble)
+    sync_bits = np.random.randint(0, 2, 500)   # 500 random alternating 1's and 0's (todo: change, chance @ getting preamble)
+
     # Combine sync symbols, sync bits, and data preamble
     sync_sequence = np.concatenate((sync_symbols, sync_bits, [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]))
     print(sync_sequence)
+
     # Combine sync sequence and ASCII bits
     all_bits = np.concatenate((sync_sequence, ascii_bits))
+    print(all_bits)
 
     num_symbols = len(all_bits) // 2
 
@@ -67,58 +59,95 @@ def get_QPSK_from_data(data):
 
         pulse_train_I = np.concatenate((pulse_train_I, pulse_I))
         pulse_train_Q = np.concatenate((pulse_train_Q, pulse_Q))
+
+
+    print(pulse_train_Q)
+    print(pulse_train_I)
+
     # Combining I and Q channels to get QPSK signal
     sig = pulse_train_I + 1j * pulse_train_Q
+
+    plt.figure(0)
+    plt.subplot(1, 2, 1)
+    plt.stem(np.real(sig))
+    plt.title("Generated I")
+    plt.subplot(1, 2, 2)
+    plt.stem(np.imag(sig))
+    plt.title("Generated Q")
+    plt.grid(True)
+    plt.show()
+
+    # Create our raised-cosine filter
     num_taps = 101
     beta = 0.6
     t = np.arange(num_taps) - (num_taps - 1) // 2
     h_rcc = np.sinc(t / L) * np.cos(np.pi * beta * t / L) / (1 - (2 * beta * t / L) ** 2)
+    plt.figure(1)
+    plt.plot(t, h_rcc, '.')
+    plt.title("RRC Filter Response")
+    plt.grid(True)
+    plt.show()
+
+    # Match filter both I and Q
+
     # RRC Matched Filter for I channel
     samples_I = np.convolve(sig.real, h_rcc, 'full')
 
     # RRC Matched Filter for Q channel
     samples_Q = np.convolve(sig.imag, h_rcc, 'full')
+
+    plt.figure(2)
+
+    plt.subplot(1, 2, 1)
+    plt.plot(samples_I, '.-')
+    for i in range(num_symbols):
+        plt.plot([i * L + num_taps // 2, i * L + num_taps // 2], [0, samples_I[i * L + num_taps // 2]])
+    plt.grid(True)
+    plt.title("RRC Filtered I")
+
+    plt.subplot(1, 2, 2)
+    plt.plot(samples_Q, '.-')
+    for i in range(num_symbols):
+        plt.plot([i * L + num_taps // 2, i * L + num_taps // 2], [0, samples_Q[i * L + num_taps // 2]])
+    plt.grid(True)
+    plt.title("RRC Filtered Q")
+    plt.show()
+
+    # create I + Q
+
+    # add carrier wave
     t = np.linspace(0, len(samples_I) / Fs, len(samples_I))
     carrier_I = np.cos(2 * np.pi * f_c * t)  # Carrier wave for I component
     carrier_Q = np.sin(2 * np.pi * f_c * t)  # Carrier wave for Q component
+
     qpsk_signal = samples_I * carrier_I + samples_Q * carrier_Q
+
     # cap volume to 1
     adj_samples = np.divide(qpsk_signal, np.max(qpsk_signal))
     attenuation_factor = 1 / np.max(qpsk_signal)  # plus other factors ie. volume?
-    return adj_samples
 
+    print(np.shape(adj_samples))
+    print("Attenuated signal by: ", attenuation_factor)
+    wavfile.write('QPSK_modulated_wave.wav', Fs, adj_samples)
+    print("Wrote .wav file!")
 
-def get_16IQ_from_data(data):
-    constellation_map = {
-        0: [-.6, .6],
-        1: [-.6, .2],
-        3: [-.6, -.2],
-        2: [-.6, -.6],
-        4: [-.2, .6],
-        5: [-.2, .2],
-        7: [-.2, -.2],
-        6: [-.2, -.6],
-        12: [.2, .6],
-        13: [.2, .2],
-        15: [.2, -.2],
-        14: [.2, -.6],
-        8: [.6, .6],
-        9: [.6, .2],
-        11: [.6, -.2],
-        10: [.6, -.6],
-    }
-    # print(data)
-    return constellation_map[data]
+    # FFT of the samples array
+    fft_result = np.fft.fft(qpsk_signal)
+    fft_result_shifted = np.fft.fftshift(fft_result)
 
+    # frequency axis
+    N = len(qpsk_signal)  # Number of samples
+    frequencies = np.fft.fftshift(np.fft.fftfreq(N, d=1 / Fs))
 
-def get_4IQ_from_data(data):
-    constellation_map = {
-        0: [.6, .6],
-        1: [-.6, .6],
-        3: [.6, -.6],
-        2: [-.6, -.6],
-    }
-    return constellation_map[data]
+    # Plot the magnitude spectrum
+    plt.plot(frequencies, np.abs(fft_result_shifted))
+    plt.title('Magnitude Spectrum')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Magnitude')
+    plt.grid(True)
+    plt.show()
+
+    return qpsk_signal
 
 
 class MainWindow(QWidget):
@@ -131,22 +160,22 @@ class MainWindow(QWidget):
 
         layout = QVBoxLayout()
 
-        # self.symbol_label = QLabel()
-        # layout.addWidget(self.symbol_label)
-        # self.symbol_label.setText("Symbol Time in millis")
-        # self.symbol_label.setMaximumWidth(10000)
-        # self.symbol_label.setMaximumHeight(100)
-        # self.symbol_label.setFont(QFont("Arial",15))
-        # self.symbol_label.setStyleSheet("margin-left:50%; margin-right:50%;")
-        # self.symbol_label.setAlignment(Qt.AlignCenter)
+        self.symbol_label = QLabel()
+        layout.addWidget(self.symbol_label)
+        self.symbol_label.setText("Symbol Time in millis")
+        self.symbol_label.setMaximumWidth(10000)
+        self.symbol_label.setMaximumHeight(100)
+        self.symbol_label.setFont(QFont("Arial", 15))
+        self.symbol_label.setStyleSheet("margin-left:50%; margin-right:50%;")
+        self.symbol_label.setAlignment(Qt.AlignCenter)
 
-        # self.symbol_time = QLineEdit()
-        # layout.addWidget(self.symbol_time)
-        # self.symbol_time.setMaximumWidth(10000)
-        # self.symbol_time.setMaximumHeight(200)
-        # self.symbol_time.setFont(QFont("Arial",20))
-        # self.symbol_time.setStyleSheet("margin-left:50%; margin-right:50%;")
-        # self.symbol_time.setAlignment(Qt.AlignCenter)
+        self.symbol_time = QLineEdit()
+        layout.addWidget(self.symbol_time)
+        self.symbol_time.setMaximumWidth(10000)
+        self.symbol_time.setMaximumHeight(200)
+        self.symbol_time.setFont(QFont("Arial", 20))
+        self.symbol_time.setStyleSheet("margin-left:50%; margin-right:50%;")
+        self.symbol_time.setAlignment(Qt.AlignCenter)
 
         self.text_label = QLabel()
         layout.addWidget(self.text_label)
@@ -195,11 +224,11 @@ class MainWindow(QWidget):
 
     def qpsk_gen(self):
         text = self.textbox.text()
-        # symbol_time = self.symbol_time.text()
-        # if(symbol_time.isnumeric() == 0):
-        #     self.message.setText("Error: Symbol time was not a number")
-        #     return
-        # symbol_time = int(symbol_time)
+        symbol_time = self.symbol_time.text()
+        if (symbol_time.isnumeric() == 0):
+            self.message.setText("Error: Symbol time was not a number")
+            return
+        symbol_time = int(symbol_time)
         text = [ord(ele) for sub in text for ele in sub]
         nums = []
         print(text)
@@ -221,9 +250,8 @@ class MainWindow(QWidget):
             long_arr = get_QPSK_from_data(nums)
             print(nums)
             sf.write("QPSK.wav", long_arr, Fs)
-            time = len(long_arr) / Fs
-            sd.play(long_arr, Fs)
             print("wrote to file")
+            self.symbol_time.setText("")
             self.textbox.setText("")
             self.message.setText("Message sent")
         except Exception as e:
@@ -254,54 +282,18 @@ class MainWindow(QWidget):
             nums.append(part2)
             nums.append(part3)
             nums.append(part4)
-        signals = []
-        signals.append(generate_sig([.6, 0], 10 * symbol_time))  # pilot signal
-        for i in nums:
-            IQ = get_4IQ_from_data(i)
-            signals.append(generate_sig(IQ, symbol_time))
-        long_arr = np.concatenate(signals)
+
+        qpsk = get_QPSK_from_data(nums)
         print(nums)
-        # print(long_arr)
-        sf.write("4QAM.wav", long_arr, Fs)
-        time = len(long_arr) / Fs
-        sd.play(long_arr, Fs)
+        sf.write("4QAM.wav", qpsk, Fs)
+        sd.play(qpsk, Fs)
         print("wrote to file")
         self.symbol_time.setText("")
         self.textbox.setText("")
         self.message.setText("Message sent")
 
     def qam16_gen(self):
-        text = self.textbox.text()
-        symbol_time = self.symbol_time.text()
-        if (symbol_time.isnumeric() == 0):
-            self.message.setText("Error: Symbol time was not a number")
-            return
-        symbol_time = int(symbol_time)
-        text = [ord(ele) for sub in text for ele in sub]
-        nums = []
-        print(text)
-        for i in range(len(text)):
-            hex = text[i]
-            nibble1 = (hex & 0xf0) >> 4
-            nibble2 = hex & 0x0f
-            inv_nibble1 = ~nibble1 & 0x0f
-            inv_nibble2 = ~nibble2 & 0x0f
-            nums.append(nibble1)
-            nums.append(nibble2)
-        signals = []
-        signals.append(generate_sig([.6, 0], 10 * symbol_time))  # pilot signal
-        for i in nums:
-            IQ = get_16IQ_from_data(i)
-            signals.append(generate_sig(IQ, symbol_time))
-        long_arr = np.concatenate(signals)
-        print(nums)
-        sf.write("16QAM.wav", long_arr, Fs)
-        time = len(long_arr) / Fs
-        sd.play(long_arr, Fs)
-        print("wrote to file")
-        self.symbol_time.setText("")
-        self.textbox.setText("")
-        self.message.setText("Message sent")
+        pass
 
 
 if __name__ == '__main__':
