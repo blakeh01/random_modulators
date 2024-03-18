@@ -5,12 +5,13 @@ import random
 
 import numpy as np
 import matplotlib.pyplot as plt
+
+import tools.eye_diagram
 import sk_dsp_comm.synchronization as sync
 
 from scipy import signal
 from scipy.io import wavfile
 
-import tools.eye_diagram
 
 # => DATA GENERATION - PULSE TRAINS AND PULSE SHAPING
 
@@ -61,7 +62,7 @@ plt.show()
 
 # Create our raised-cosine filter
 num_taps = 101
-beta = 0.3
+beta = 0.75
 t = np.arange(num_taps) - (num_taps - 1) // 2
 h_rcc = np.sinc(t / L) * np.cos(np.pi * beta * t / L) / (1 - (2 * beta * t / L) ** 2)
 plt.figure(1)
@@ -168,6 +169,21 @@ if remove_carrier:
     # Combine into complex numbers
     samples = demod_I_filtered + 1j * demod_Q_filtered
 
+    # t = np.linspace(0, len(samples) / Fs, len(samples))
+    # samples = np.multiply(samples, np.cos(2 * np.pi * f_c * t))
+    #
+    # cutoff_frequency = 4000  # Hz
+    # filter_length = 101  # Filter length, make it odd
+    #
+    # nyquist_frequency = 0.5 * Fs  # Nyquist frequency
+    # cutoff_normalized = cutoff_frequency / nyquist_frequency
+    # h_lp = signal.firwin(filter_length, cutoff_normalized, window='hamming')
+    #
+    # h_lp /= np.sum(h_lp)  # unity gain
+    #
+    # samples = np.convolve(samples, h_lp, 'full')  # apply filter
+    # # samples = np.convolve(samples, h_rcc)  # apply filter
+    #
     # FFT of the samples array
     fft_result = np.fft.fft(samples)
     fft_result_shifted = np.fft.fftshift(fft_result)
@@ -257,7 +273,23 @@ plt.xlabel("In-phase Component")
 plt.ylabel("Quadrature Component")
 ax1.grid()
 
-ax2.plot(np.real(out[32:-8]), np.imag(out[32:-8]), '.')
+color_code = {1:[],2:[],3:[],4:[]}
+for i in out[32:-8]:
+    based = np.real(i)
+    liberal = np.imag(i)
+    if (based>0 and liberal>0):
+        color_code[1].append(i)
+    elif(based <0 and liberal>0):
+        color_code[2].append(i)
+    elif (based<0 and liberal<0):
+        color_code[3].append(i)
+    elif(based >0 and liberal<0):
+        color_code[4].append(i)
+
+ax2.plot(np.real(color_code[1]), np.imag(color_code[1]), '.','r')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(color_code[2]), np.imag(color_code[2]), '.','b')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(color_code[3]), np.imag(color_code[3]), '.','g')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(color_code[4]), np.imag(color_code[4]), '.','m')  # leave out the ones at beginning, before sync finished
 plt.axis([-4, 4, -4, 4])
 ax2.set_title('After Time Sync')
 ax2.grid()
@@ -267,12 +299,54 @@ plt.show()
 
 tools.eye_diagram.plot_eye(np.real(out), np.imag(out), L)
 
+
+# if True:
+#     from matplotlib.animation import FuncAnimation
+#
+#     fig, ax = plt.subplots()
+#     fig.set_tight_layout(True)
+#     line, = ax.plot([0, 0, 0, 0, 0], [0, 0, 0, 0, 0], '.')
+#     ax.axis([-2, 2, -2, 2])
+#
+#     # Add zeros at the beginning so that when gif loops it has a transition period
+#     temp_out = np.concatenate((np.zeros(50), out))
+#
+#
+#     def update(i):
+#         print(i)
+#         line.set_xdata([np.real(temp_out[i:i + 5])])
+#         line.set_ydata([np.imag(temp_out[i:i + 5])])
+#         return line, ax
+#
+#
+#     anim = FuncAnimation(fig, update, frames=np.arange(0, len(out - 5)), interval=20)
+#     anim.save('time-sync-constellation-animated.gif', dpi=80, writer='imagemagick')
+#     exit()
+
 # => SYMBOL TIMING RECOVERY USING COSTAS LOOP
 
 samples = out  # copy for plotting
 
-out, a_hat, e_phi, theta_hat = sync.DD_carrier_sync(out, 16, 0.05, 0.707, mod_type='MQAM', type=2)
+# PLL from lib
+out, a_hat, e_phi, theta_hat = sync.DD_carrier_sync(samples, 16, 0.05, 0.707, mod_type='MQAM', type=2)
 
+# color_code1_count =0
+# color_code2_count = 0
+# color_code3_count = 0
+# color_code4_count = 0
+# for index,i in enumerate(samples):
+#     if i in color_code[1]:
+#         color_code[1][color_code1_count] = color_code[1][color_code1_count]*phase_shifts[index]
+#         color_code1_count += 1
+#     elif i in color_code[2]:
+#         color_code[2][color_code2_count] = color_code[2][color_code2_count]*phase_shifts[index]
+#         color_code2_count += 1
+#     elif i in color_code[3]:
+#         color_code[3][color_code3_count] = color_code[3][color_code3_count]*phase_shifts[index]
+#         color_code3_count += 1
+#     elif i in color_code[4]:
+#         color_code[4][color_code4_count] = color_code[4][color_code4_count]*phase_shifts[index]
+#         color_code4_count += 1
 fig, (ax1, ax2) = plt.subplots(2, figsize=(7, 5))  # 7 is nearly full width
 fig.tight_layout(pad=2.0)  # add space between subplots
 ax1.plot(np.real(samples), '.-')
@@ -293,12 +367,14 @@ ax.set_xlabel('Sample')
 ax.set_ylabel('Freq Offset')
 plt.show()
 
-plt.plot(np.real(out), np.imag(out), '.')
-#plt.axis([-4, 4, -4, 4])
-plt.title('Corrected RX Constellation Map')
-plt.xlabel("In-phase Component")
-plt.ylabel("Quadrature Component")
+# plt.plot(np.real(color_code[1]), np.imag(color_code[1]), '.','r')  # leave out the ones at beginning, before sync finished
+# plt.plot(np.real(color_code[2]), np.imag(color_code[2]), '.','b')  # leave out the ones at beginning, before sync finished
+# plt.plot(np.real(color_code[3]), np.imag(color_code[3]), '.','g')  # leave out the ones at beginning, before sync finished
+# plt.plot(np.real(color_code[4]), np.imag(color_code[4]), '.','m')  # leave out the ones at beginning, before sync finished
+plt.plot(out.real, out.imag, 'g.')
+plt.axis('equal')
+plt.xlabel(r'In-phase (real part)')
+plt.ylabel(r'Quadrature (imag part)')
+plt.title(r'Before Phase Track')
 plt.grid()
 plt.show()
-
-# ANIMATE M&M LOOP
