@@ -16,7 +16,7 @@ def plot_eye(I, Q, L, disp_name="Eye Diagram"):
     plt.xlabel('Samples')
     plt.ylabel('Amplitude')
     plt.grid(True)
-    plt.ylim(-1, 1)
+    plt.ylim(-2, 2)
     plt.xlim(0, L * 3 / 2)  # Adjust x-axis limits to hold two symbol durations
 
     # Plot the eye diagram for Q component
@@ -28,7 +28,7 @@ def plot_eye(I, Q, L, disp_name="Eye Diagram"):
     plt.xlabel('Samples')
     plt.ylabel('Amplitude')
     plt.grid(True)
-    plt.ylim(-1, 1)
+    plt.ylim(-2, 2)
     plt.xlim(0, L * 3 / 2)  # Adjust x-axis limits to hold two symbol durations
 
     plt.tight_layout()

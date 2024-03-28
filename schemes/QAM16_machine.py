@@ -12,7 +12,6 @@ import sk_dsp_comm.synchronization as sync
 from scipy import signal
 from scipy.io import wavfile
 
-
 # => DATA GENERATION - PULSE TRAINS AND PULSE SHAPING
 
 num_symbols = 2400  # Number of symbols
@@ -62,7 +61,7 @@ plt.show()
 
 # Create our raised-cosine filter
 num_taps = 101
-beta = 0.75
+beta = 0.30
 t = np.arange(num_taps) - (num_taps - 1) // 2
 h_rcc = np.sinc(t / L) * np.cos(np.pi * beta * t / L) / (1 - (2 * beta * t / L) ** 2)
 plt.figure(1)
@@ -273,23 +272,7 @@ plt.xlabel("In-phase Component")
 plt.ylabel("Quadrature Component")
 ax1.grid()
 
-color_code = {1:[],2:[],3:[],4:[]}
-for i in out[32:-8]:
-    based = np.real(i)
-    liberal = np.imag(i)
-    if (based>0 and liberal>0):
-        color_code[1].append(i)
-    elif(based <0 and liberal>0):
-        color_code[2].append(i)
-    elif (based<0 and liberal<0):
-        color_code[3].append(i)
-    elif(based >0 and liberal<0):
-        color_code[4].append(i)
-
-ax2.plot(np.real(color_code[1]), np.imag(color_code[1]), '.','r')  # leave out the ones at beginning, before sync finished
-ax2.plot(np.real(color_code[2]), np.imag(color_code[2]), '.','b')  # leave out the ones at beginning, before sync finished
-ax2.plot(np.real(color_code[3]), np.imag(color_code[3]), '.','g')  # leave out the ones at beginning, before sync finished
-ax2.plot(np.real(color_code[4]), np.imag(color_code[4]), '.','m')  # leave out the ones at beginning, before sync finished
+ax2.plot(np.real(out), np.imag(out), '.')
 plt.axis([-4, 4, -4, 4])
 ax2.set_title('After Time Sync')
 ax2.grid()
@@ -299,54 +282,13 @@ plt.show()
 
 tools.eye_diagram.plot_eye(np.real(out), np.imag(out), L)
 
-
-# if True:
-#     from matplotlib.animation import FuncAnimation
-#
-#     fig, ax = plt.subplots()
-#     fig.set_tight_layout(True)
-#     line, = ax.plot([0, 0, 0, 0, 0], [0, 0, 0, 0, 0], '.')
-#     ax.axis([-2, 2, -2, 2])
-#
-#     # Add zeros at the beginning so that when gif loops it has a transition period
-#     temp_out = np.concatenate((np.zeros(50), out))
-#
-#
-#     def update(i):
-#         print(i)
-#         line.set_xdata([np.real(temp_out[i:i + 5])])
-#         line.set_ydata([np.imag(temp_out[i:i + 5])])
-#         return line, ax
-#
-#
-#     anim = FuncAnimation(fig, update, frames=np.arange(0, len(out - 5)), interval=20)
-#     anim.save('time-sync-constellation-animated.gif', dpi=80, writer='imagemagick')
-#     exit()
-
-# => SYMBOL TIMING RECOVERY USING COSTAS LOOP
+# => SYMBOL TIMING RECOVERY USING PLL
 
 samples = out  # copy for plotting
 
 # PLL from lib
 out, a_hat, e_phi, theta_hat = sync.DD_carrier_sync(samples, 16, 0.05, 0.707, mod_type='MQAM', type=2)
 
-# color_code1_count =0
-# color_code2_count = 0
-# color_code3_count = 0
-# color_code4_count = 0
-# for index,i in enumerate(samples):
-#     if i in color_code[1]:
-#         color_code[1][color_code1_count] = color_code[1][color_code1_count]*phase_shifts[index]
-#         color_code1_count += 1
-#     elif i in color_code[2]:
-#         color_code[2][color_code2_count] = color_code[2][color_code2_count]*phase_shifts[index]
-#         color_code2_count += 1
-#     elif i in color_code[3]:
-#         color_code[3][color_code3_count] = color_code[3][color_code3_count]*phase_shifts[index]
-#         color_code3_count += 1
-#     elif i in color_code[4]:
-#         color_code[4][color_code4_count] = color_code[4][color_code4_count]*phase_shifts[index]
-#         color_code4_count += 1
 fig, (ax1, ax2) = plt.subplots(2, figsize=(7, 5))  # 7 is nearly full width
 fig.tight_layout(pad=2.0)  # add space between subplots
 ax1.plot(np.real(samples), '.-')
@@ -362,19 +304,23 @@ fig, ax = plt.subplots(figsize=(7, 3))  # 7 is nearly full width
 # For some reason you have to divide the steady state freq by 50,
 #   to get the fraction of fs that the fo is...
 #   and changing loop_bw doesn't matter
-ax.plot(e_phi, '.-')
+ax.plot(theta_hat, '.-')
 ax.set_xlabel('Sample')
 ax.set_ylabel('Freq Offset')
 plt.show()
 
-# plt.plot(np.real(color_code[1]), np.imag(color_code[1]), '.','r')  # leave out the ones at beginning, before sync finished
-# plt.plot(np.real(color_code[2]), np.imag(color_code[2]), '.','b')  # leave out the ones at beginning, before sync finished
-# plt.plot(np.real(color_code[3]), np.imag(color_code[3]), '.','g')  # leave out the ones at beginning, before sync finished
-# plt.plot(np.real(color_code[4]), np.imag(color_code[4]), '.','m')  # leave out the ones at beginning, before sync finished
-plt.plot(out.real, out.imag, 'g.')
-plt.axis('equal')
-plt.xlabel(r'In-phase (real part)')
-plt.ylabel(r'Quadrature (imag part)')
-plt.title(r'Before Phase Track')
-plt.grid()
+_, (ax1, ax2) = plt.subplots(1, 2, figsize=(6, 2.5))  # 7 is nearly full width
+ax1.plot(np.real(samples), np.imag(samples), '.')
+plt.axis([-4, 4, -4, 4])
+ax1.set_title('Before Carrier Sync')
+plt.xlabel("In-phase Component")
+plt.ylabel("Quadrature Component")
+ax1.grid()
+
+ax2.plot(np.real(out), np.imag(out), '.')
+plt.axis([-4, 4, -4, 4])
+ax2.set_title('After Carrier Sync')
+ax2.grid()
+plt.xlabel("In-phase Component")
+plt.ylabel("Quadrature Component")
 plt.show()

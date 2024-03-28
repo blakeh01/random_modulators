@@ -5,6 +5,7 @@ import sk_dsp_comm.synchronization as sync
 import matplotlib.pyplot as plt
 from scipy import signal
 from scipy.io import wavfile
+from tools.helpers import plot_mag_fft
 
 # ===> TEST MODULATOR <===
 
@@ -14,13 +15,15 @@ Ns = int(Fs / symbol_rate)  # samples per bit
 M = 16  # constellation size
 N_sym = 1000  # num of symbols
 f_c = 10000  # carrier freq
-alpha = 0.3  # roll-off factor, increases bandwidth
+alpha = 0.5  # roll-off factor, increases bandwidth
 
-xbb, h, data = dc.qam_gray_encode_bb(N_sym, Ns, M, pulse='src', alpha=0.3)
+xbb, h, data = dc.qam_gray_encode_bb(N_sym, Ns, M, pulse='src', alpha=alpha)
 n = np.arange(0, len(xbb))
 
 # add carrier
 xc1 = xbb * np.exp(1j * 2 * np.pi * (f_c / Fs) * n)
+
+plot_mag_fft(xc1, Fs)
 
 # Normalize the signal to prevent clipping
 xc1 = xc1 / np.max(np.abs(xc1))
@@ -28,18 +31,19 @@ xc1 = xc1 / np.max(np.abs(xc1))
 # Save xc1 to a .wav file
 wavfile.write('xc1_complex.wav', Fs, np.array(xc1, dtype=np.float32))
 
-# Read the saved .wav file
-Fs, xc1 = wavfile.read('xc1_complex.wav')
-n = np.arange(0, len(xc1))
-
 # ===> TEST CHANNEL <===
+
+# Read the saved .wav file
+Fs, rcc = wavfile.read('xc1_complex.wav')
+n = np.arange(0, len(rcc))
+
 # AWGN
-EbN0_dB = 15
+EbN0_dB = 20
 EsN0_dB = 10 * np.log10(np.log2(M)) + EbN0_dB
-rcc = dc.cpx_awgn(xc1, EsN0_dB, Ns)
+rcc = dc.cpx_awgn(rcc, EsN0_dB, Ns)
 
 # Freq error
-F_error = 0.1  # hz
+F_error = 0.125  # hz
 rcc *= np.exp(1j * 2 * np.pi * (F_error / Fs) * n)  # Df = 0.012*Rb or 1.2% of Rb
 
 # ===> TEST DEMODULATOR <===
