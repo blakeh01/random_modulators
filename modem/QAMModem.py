@@ -42,8 +42,8 @@ class QAMModem:
 
         :param symbol_rate: symbols/sec
         :param M: modulation order (M=2,4,16,64,128,256 support by libs, however, 16 is only working in this impl.)
-        :param alpha: roll-off factor of matched filter, higher means lower ISI however increased bandwidth
-        :param f_carrier: carrier frequency
+        :param alpha: roll-off factor of matched filter, higher means lower ISI but increased bandwidth
+        :param f_carrier: carrier frequency ( < 5000 kHz )
         :param fs: sampling rate
         """
         self.fs = fs
@@ -61,8 +61,8 @@ class QAMModem:
 
     def packet_and_modulate_bits(self, data_bits, write_to_wav=True, play_sig=False, plots=True):
         """
-        Given a list of bits to encode, generates a string of bits (sync, preamble, packet data) then performs a pulse
-        shaping filter. This is then modulated with 'f_carrier' to send over audio channel.
+        Given a list of bits to encode, generates a string of bits (sync, preamble, packet data, phase ambiguity detector)
+        then performs a pulse shaping filter. This is then modulated with 'f_carrier' to send over audio channel.
 
         :param data_bits: raw bits to packet (pure ascii bits or similar)
         :param write_to_wav: if true, will create a .wav file
@@ -71,7 +71,7 @@ class QAMModem:
         :return:
         """
 
-        # # # Initialize arrays for I and Q channels
+        # Initialize arrays for I and Q channels
         pulse_train_I = np.array([])
         pulse_train_Q = np.array([])
 
@@ -163,7 +163,7 @@ class QAMModem:
         :param plots: show constellation maps and FFTs
         :return: all symbols received from RX including sync words, preamble, and data.
         """
-        if plots: plot_mag_fft(sig, self.fs, "Received Signal")
+        if plots: plot_mag_fft(sig, self.fs, "Received Signal FFT")
 
         # equalize
         sig = sig * 4  # todo calc channel attenuation
@@ -175,7 +175,7 @@ class QAMModem:
         # apply matched filter (acts as LP to remove carrier)
         rbb = signal.lfilter(self.matched_filter_RX, 1, rbb)
 
-        if plots: plot_mag_fft(rbb, self.fs, "DTFT Shifted and Filtered Signal")
+        if plots: plot_mag_fft(rbb, self.fs, "DTFT Shifted and Filtered Signal FFT")
 
         # TED
         out, e = sync.NDA_symb_sync(rbb, self.sps, 2, 0.05)
@@ -193,55 +193,17 @@ class QAMModem:
             plt.xlabel("Sample [n]")
             plt.show()
 
-        # map constellation points to ideal ones
-        ideal_x = np.array([point[0] for point in self.constellation_map().values()])
-        ideal_y = np.array([point[1] for point in self.constellation_map().values()])
+        # retrieve symbols from constellation map
+        symbols = self.get_symbols_from_map(out_pll, plots)
 
-        ideal_x = ideal_x / np.max(ideal_x)
-        ideal_y = ideal_y / np.max(ideal_y)  # normalize to match RX conditions
-
-        # map constellation points to ideal ones
-        symbols = []
-        idx = []  # Array to store the index of the closest ideal constellation point for each RX point
-
-        for point in out_pll:
-            x = point.real
-            y = point.imag
-
-            distances = np.sqrt((x - ideal_x) ** 2 + (y - ideal_y) ** 2)
-            closest_index = np.argmin(distances)
-            idx.append(closest_index)  # Append the index of the closest point
-            closest_binary = list(self.constellation_map().keys())[closest_index]
-            symbols.append(closest_binary)
-
-        closest_points = np.array(idx)
-
-        # plot ideal vs. actual constellation
-        if plots:
-            colors = ['orange', 'green', 'cyan', 'magenta', 'yellow', 'brown', 'purple', 'pink',
-                      'lime', 'teal', 'indigo', 'maroon', 'olive', 'navy', 'turquoise', 'salmon']
-
-            plt.plot(ideal_x, ideal_y, 'r.', label="Ideal Points")
-            for i, (symbol, (x, y)) in enumerate(self.constellation_map().items()):
-                plt.text(x / 3, (y / 3) + 0.1, f'{symbol}', fontsize=9, color='red', ha='center', va='center')
-                plt.scatter(out_pll.real[closest_points == i], out_pll.imag[closest_points == i], color=colors[i],
-                            label=symbol)
-
-            plt.title("RX Constellation Map")
-            plt.xlabel("In-phase Component")
-            plt.ylabel("Quadrature Component")
-            plt.legend()
-            plt.grid(True)
-            plt.show()
-
-        # rotate symbols to fix phase ambiguity
+        # check phase ambiguity
         desired_symbols = ['0000', '1000', '1010', '0010']  # possible configurations
         symbols_filtered = [symbol for symbol in symbols if symbol in desired_symbols]
         symbols_unique, symbols_counts = np.unique(symbols_filtered, return_counts=True)
 
         if plots:
             plt.figure(figsize=(8, 6))
-            plt.bar(symbols_unique, symbols_counts, color=colors[:len(symbols_unique)])
+            plt.bar(symbols_unique, symbols_counts)
             plt.title("Symbol Occurrence")
             plt.xlabel("Symbols")
             plt.ylabel("Occurrence Count")
@@ -251,6 +213,7 @@ class QAMModem:
         most_common_symbol = symbols_unique[np.argmax(symbols_counts)]
         print("Possible phase detection symbol:", most_common_symbol)
 
+        # if the most common symbol is not 0000 (our alignment symbol) then we need to rotate the map
         if most_common_symbol == '1000':
             print("Phase ambiguity detected by pi/2")
             out_pll = out_pll * np.exp(1j * (np.pi / 2))
@@ -265,7 +228,32 @@ class QAMModem:
             return symbols
 
         # RECALC SYMBOLS WITH ROTATION
-        # map constellation points to ideal ones
+        symbols = self.get_symbols_from_map(out_pll, plots)
+
+        # show bar graph after correction
+        if plots:
+            desired_symbols = ['0000', '1000', '1010', '0010']  # possible configurations
+            symbols_filtered = [symbol for symbol in symbols if symbol in desired_symbols]
+
+            plt.figure(figsize=(8, 6))
+            symbols_unique, symbols_counts = np.unique(symbols_filtered, return_counts=True)
+            plt.bar(symbols_unique, symbols_counts)
+            plt.title("Symbol Occurrence")
+            plt.xlabel("Symbols")
+            plt.ylabel("Occurrence Count")
+            plt.grid(True)
+            plt.show()
+
+        return symbols
+
+    def get_symbols_from_map(self, map_points, plots=True):
+        """
+        Given a list of complex points, maps them to the NORMALIZED constellation map. Use euclidean distance to find
+        the proper symbol.
+        :param map_points: list of points that correspond to the RX constellation map
+        :param plots: show constellation maps
+        :return: symbols decoded from constellation map
+        """
         ideal_x = np.array([point[0] for point in self.constellation_map().values()])
         ideal_y = np.array([point[1] for point in self.constellation_map().values()])
 
@@ -276,7 +264,7 @@ class QAMModem:
         symbols = []
         idx = []  # Array to store the index of the closest ideal constellation point for each RX point
 
-        for point in out_pll:
+        for point in map_points:
             x = point.real
             y = point.imag
 
@@ -296,27 +284,13 @@ class QAMModem:
             plt.plot(ideal_x, ideal_y, 'r.', label="Ideal Points")
             for i, (symbol, (x, y)) in enumerate(self.constellation_map().items()):
                 plt.text(x / 3, (y / 3) + 0.1, f'{symbol}', fontsize=9, color='red', ha='center', va='center')
-                plt.scatter(out_pll.real[closest_points == i], out_pll.imag[closest_points == i], color=colors[i],
+                plt.scatter(map_points.real[closest_points == i], map_points.imag[closest_points == i], color=colors[i],
                             label=symbol)
 
             plt.title("RX Constellation Map")
             plt.xlabel("In-phase Component")
             plt.ylabel("Quadrature Component")
             plt.legend()
-            plt.grid(True)
-            plt.show()
-
-        # rotate symbols to fix phase ambiguity
-        desired_symbols = ['0000', '1000', '1010', '0010']  # possible configurations
-        symbols_filtered = [symbol for symbol in symbols if symbol in desired_symbols]
-
-        if plots:
-            plt.figure(figsize=(8, 6))
-            symbols_unique, symbols_counts = np.unique(symbols_filtered, return_counts=True)
-            plt.bar(symbols_unique, symbols_counts, color=colors[:len(symbols_unique)])
-            plt.title("Symbol Occurrence")
-            plt.xlabel("Symbols")
-            plt.ylabel("Occurrence Count")
             plt.grid(True)
             plt.show()
 
