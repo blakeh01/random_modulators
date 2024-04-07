@@ -89,6 +89,10 @@ class MainWindow(QMainWindow):
         self.timer.start(1000)
 
     def demodulate(self):
+        """
+        Checks to see if the audio file has changed since the last demodulation, if so, demodulate it and
+        update channel stats.
+        """
         try:
             current_modified_time = os.path.getmtime(self.filename)
             if current_modified_time != self.last_modified_time:

@@ -2,84 +2,17 @@
     General implementation of a QAM modulation/demodulator *16 QAM for now
 """
 import math
-import sys
-import wave
 
 import numpy as np
 import matplotlib.pyplot as plt
 import pyaudio
 import sk_dsp_comm.sigsys as sigsys
 import sk_dsp_comm.synchronization as sync
-import sk_dsp_comm.digitalcom as dc
 from crcmod import crcmod
 
 from scipy import signal
 from scipy.io import wavfile
-from tools.helpers import plot_mag_fft, plot_constellation_2, gardners_loop
-
-FORMAT = pyaudio.paFloat32
-CHANNELS = 1
-RATE = 48000
-CHUNK = 512
-RECORD_SECONDS = 10
-THRESHOLD_START = 0.2  # Adjust this threshold according to your needs
-THRESHOLD_STOP = 0.01
-
-def record_audio(filename="MQAM_received.wav"):
-    audio = pyaudio.PyAudio()
-
-    stream = audio.open(format=FORMAT, channels=CHANNELS,
-                        rate=RATE, input=True,
-                        frames_per_buffer=CHUNK)
-
-    print("Listening...")
-
-    frames = []
-    is_recording = False
-
-    while True:
-        data = stream.read(CHUNK)
-        decoded_data = np.frombuffer(data, dtype=np.float32)
-        amplitude = np.max(abs(decoded_data))
-
-        if amplitude > THRESHOLD_START and not is_recording:
-            print("Recording started.")
-            is_recording = True
-
-        if is_recording:
-            frames.append(decoded_data)
-
-        if amplitude < THRESHOLD_STOP and is_recording:
-            print("Recording stopped.")
-            break
-
-    print("Saving recording...")
-    stream.stop_stream()
-    stream.close()
-    audio.terminate()
-
-    # Save the recorded audio using scipy
-    wavfile.write(filename, RATE, np.concatenate(frames))
-
-    print("Recording saved as", filename)
-
-
-def calc_BER(tx_data, rx_data):
-    """
-    Calculates bit error rate given tx and rx data
-    :param tx_data: bits sent to the receiver
-    :param rx_data: bits received by RX
-    :return: the BER
-    """
-    if len(tx_data) != len(rx_data):
-        raise ValueError("Input bit strings must be of the same length")
-
-    num_bits = len(rx_data)
-    num_errors = sum(rx_data[i] != tx_data[i] for i in range(num_bits))
-    ber = num_errors / num_bits
-
-    print(f"Calculated BER: {ber}")
-    return ber
+from tools.helpers import plot_mag_fft, plot_constellation_2
 
 
 def create_packet(data, num_reps):
@@ -184,10 +117,8 @@ class QAMModem:
 
         # play .wav file here
         if play_sig:
-            # Instantiate PyAudio
             p = pyaudio.PyAudio()
 
-            # Open a stream
             stream = p.open(format=pyaudio.paFloat32,
                             channels=1,
                             rate=self.fs,
@@ -304,7 +235,7 @@ class QAMModem:
             plt.show()
 
         # rotate symbols to fix phase ambiguity
-        desired_symbols = ['0000', '1000', '1010', '0010'] # possible configurations
+        desired_symbols = ['0000', '1000', '1010', '0010']  # possible configurations
         symbols_filtered = [symbol for symbol in symbols if symbol in desired_symbols]
         symbols_unique, symbols_counts = np.unique(symbols_filtered, return_counts=True)
 
@@ -322,13 +253,13 @@ class QAMModem:
 
         if most_common_symbol == '1000':
             print("Phase ambiguity detected by pi/2")
-            out_pll = out_pll * np.exp(1j * (np.pi/2))
+            out_pll = out_pll * np.exp(1j * (np.pi / 2))
         elif most_common_symbol == '1010':
             print("Phase ambiguity detected by pi")
             out_pll = out_pll * np.exp(1j * np.pi)
         elif most_common_symbol == '0010':
             print("Phase ambiguity detected by -pi/2")
-            out_pll = out_pll * np.exp(-1j * (np.pi/2))
+            out_pll = out_pll * np.exp(-1j * (np.pi / 2))
         else:
             print("No phase ambiguity detected.")
             return symbols
@@ -436,7 +367,6 @@ class QAMModem:
                  "1011": [3, -1],
                  "1010": [3, -3]}
 
-
 ### TEST CODE ###
 
 # np.set_printoptions(threshold=sys.maxsize)
@@ -452,7 +382,6 @@ class QAMModem:
 # # test, TX_bits = modem.packet_and_modulate_bits(test_bits, plots=False)
 #
 # # ==> DEMODULATE <===
-# # record_audio()
 # Fs, rcc = wavfile.read("../gui/ReceivedAudio.wav")
 # add_noise = False
 # assert Fs == 48000
