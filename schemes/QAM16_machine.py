@@ -135,7 +135,7 @@ print(np.shape(samples))
 # samples = np.divide(samples, 32767)
 # print(f"largest sample amp: {np.max(samples)}")
 
-add_noise = True
+add_noise = False
 gain_control = True
 remove_carrier = True
 
@@ -326,64 +326,24 @@ tools.eye_diagram.plot_eye(np.real(out), np.imag(out), L)
 samples = out  # copy for plotting
 
 
-def phase_detector_16(sample):
-    return np.sign(np.real(sample))*np.imag(sample) - np.sign(np.imag(sample))*np.real(sample)
 
-
-N = len(samples)
-phase = 0
-freq = 0
-loop_bw = 0.125  # This is what to adjust, to make the feedback loop faster or slower (which impacts stability)
-damping = np.sqrt(2.0) / 2.0  # Set the damping factor for a critically damped system
-alpha = (4 * damping * loop_bw) / (1.0 + (2.0 * damping * loop_bw) + loop_bw ** 2)
-beta = (4 * loop_bw ** 2) / (1.0 + (2.0 * damping * loop_bw) + loop_bw ** 2)
-print("alpha:", alpha)
-print("beta:", beta)
-out = np.zeros(N, dtype=np.complex64)
-freq_log = []
-phase_shifts = []
-for i in range(N):
-    out[i] = samples[i] * np.exp(-1j * phase)  # adjust the input sample by the inverse of the estimated phase offset
-
-    error = phase_detector_16(out[i])  # This is the error formula for 4th order Costas Loop (e.g. for QPSK)
-
-    # Limit error to the range -1 to 1
-    error = min(error, 1.0)
-    error = max(error, -1.0)
-    phase_shifts.append(np.exp(-1j*phase))
-
-    # Advance the loop (recalc phase and freq offset)
-    freq += (beta * error)
-    freq_log.append(freq / 50.0 * Fs)  # see note at bottom
-    phase += freq + (alpha * error)
-
-    # Adjust phase so its always between 0 and 2pi, recall that phase wraps around every 2pi
-    while phase >= 2 * np.pi:
-        phase -= 2 * np.pi
-    while phase < 0:
-        phase += 2 * np.pi
-
-    # Limit frequency to range -1 to 1
-    freq = min(freq, 1.0)
-    freq = max(freq, -1.0)
-
-color_code1_count =0
-color_code2_count = 0
-color_code3_count = 0
-color_code4_count = 0
-for index,i in enumerate(samples):
-    if i in color_code[1]:
-        color_code[1][color_code1_count] = color_code[1][color_code1_count]*phase_shifts[index]
-        color_code1_count += 1
-    elif i in color_code[2]:
-        color_code[2][color_code2_count] = color_code[2][color_code2_count]*phase_shifts[index]
-        color_code2_count += 1
-    elif i in color_code[3]:
-        color_code[3][color_code3_count] = color_code[3][color_code3_count]*phase_shifts[index]
-        color_code3_count += 1
-    elif i in color_code[4]:
-        color_code[4][color_code4_count] = color_code[4][color_code4_count]*phase_shifts[index]
-        color_code4_count += 1
+# color_code1_count =0
+# color_code2_count = 0
+# color_code3_count = 0
+# color_code4_count = 0
+# for index,i in enumerate(samples):
+#     if i in color_code[1]:
+#         color_code[1][color_code1_count] = color_code[1][color_code1_count]*phase_shifts[index]
+#         color_code1_count += 1
+#     elif i in color_code[2]:
+#         color_code[2][color_code2_count] = color_code[2][color_code2_count]*phase_shifts[index]
+#         color_code2_count += 1
+#     elif i in color_code[3]:
+#         color_code[3][color_code3_count] = color_code[3][color_code3_count]*phase_shifts[index]
+#         color_code3_count += 1
+#     elif i in color_code[4]:
+#         color_code[4][color_code4_count] = color_code[4][color_code4_count]*phase_shifts[index]
+#         color_code4_count += 1
 fig, (ax1, ax2) = plt.subplots(2, figsize=(7, 5))  # 7 is nearly full width
 fig.tight_layout(pad=2.0)  # add space between subplots
 ax1.plot(np.real(samples), '.-')
