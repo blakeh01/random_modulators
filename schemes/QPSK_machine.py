@@ -1,5 +1,5 @@
 """
-    QPSK example of pulse-trains being shaped using RRC and demodulated through m&m clock recovery and costas loop.
+    QPSK example of pulse-trains being shaped using RRC and demodulated through m&m clock recovery and PLL.
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,6 +8,7 @@ from scipy import signal
 from scipy.io import wavfile
 
 import tools.eye_diagram
+import sk_dsp_comm.synchronization as sync
 
 # => DATA GENERATION - PULSE TRAINS AND PULSE SHAPING
 
@@ -135,11 +136,11 @@ plt.grid(True)
 plt.show()
 
 # => BEGIN CHANNEL SIMULATION
-Fs, samples = wavfile.read("erik_QPSK.wav")
+Fs, samples = wavfile.read("transmitted_BLAKEHAVENS.wav")
 print(np.shape(samples))
 
-samples = np.divide(samples, 32767)
-print(f"largest sample amp: {np.max(samples)}")
+# samples = np.divide(samples, 32767)
+# print(f"largest sample amp: {np.max(samples)}")
 
 add_noise = False
 gain_control = True
@@ -211,7 +212,7 @@ if gain_control:
 
 if add_noise:
     # Create and apply fractional delay filter and plot constellation maps
-    delay = 0.4  # fractional delay, in samples
+    delay = 3  # fractional delay, in samples
     N = 21  # number of taps
     n = np.arange(N)  # 0,1,2,3...
     h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
@@ -321,57 +322,11 @@ tools.eye_diagram.plot_eye(np.real(out), np.imag(out), L)
 #     anim.save('time-sync-constellation-animated.gif', dpi=80, writer='imagemagick')
 #     exit()
 
-# => SYMBOL TIMING RECOVERY USING COSTAS LOOP
-
-
-def phase_detector_4(sample):
-    if sample.real > 0:
-        a = 1.0
-    else:
-        a = -1.0
-    if sample.imag > 0:
-        b = 1.0
-    else:
-        b = -1.0
-    return a * sample.imag - b * sample.real
-
+# => SYMBOL TIMING RECOVERY USING PLL
 
 samples = out  # copy for plotting
 
-N = len(samples)
-phase = 0
-freq = 0
-loop_bw = 0.05  # This is what to adjust, to make the feedback loop faster or slower (which impacts stability)
-damping = np.sqrt(2.0) / 2.0  # Set the damping factor for a critically damped system
-alpha = (4 * damping * loop_bw) / (1.0 + (2.0 * damping * loop_bw) + loop_bw ** 2)
-beta = (4 * loop_bw ** 2) / (1.0 + (2.0 * damping * loop_bw) + loop_bw ** 2)
-print("alpha:", alpha)
-print("beta:", beta)
-out = np.zeros(N, dtype=np.complex64)
-freq_log = []
-for i in range(N):
-    out[i] = samples[i] * np.exp(-1j * phase)  # adjust the input sample by the inverse of the estimated phase offset
-
-    error = phase_detector_4(out[i])  # This is the error formula for 4th order Costas Loop (e.g. for QPSK)
-
-    # Limit error to the range -1 to 1
-    error = min(error, 1.0)
-    error = max(error, -1.0)
-
-    # Advance the loop (recalc phase and freq offset)
-    freq += (beta * error)
-    freq_log.append(freq / 50.0 * Fs)  # see note at bottom
-    phase += freq + (alpha * error)
-
-    # Adjust phase so its always between 0 and 2pi, recall that phase wraps around every 2pi
-    while phase >= 2 * np.pi:
-        phase -= 2 * np.pi
-    while phase < 0:
-        phase += 2 * np.pi
-
-    # Limit frequency to range -1 to 1
-    freq = min(freq, 1.0)
-    freq = max(freq, -1.0)
+out, a_hat, e_phi, theta_hat = sync.DD_carrier_sync(out, 4, 0.05, 0.707, mod_type='MQAM', type=2)
 
 fig, (ax1, ax2) = plt.subplots(2, figsize=(7, 5))  # 7 is nearly full width
 fig.tight_layout(pad=2.0)  # add space between subplots
@@ -388,7 +343,7 @@ fig, ax = plt.subplots(figsize=(7, 3))  # 7 is nearly full width
 # For some reason you have to divide the steady state freq by 50,
 #   to get the fraction of fs that the fo is...
 #   and changing loop_bw doesn't matter
-ax.plot(freq_log, '.-')
+ax.plot(e_phi, '.-')
 ax.set_xlabel('Sample')
 ax.set_ylabel('Freq Offset')
 plt.show()

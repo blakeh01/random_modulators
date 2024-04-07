@@ -326,7 +326,7 @@ plt.ylabel("Quadrature Component")
 plt.grid()
 plt.show()
 
-plot_eye(np.real(out), np.imag(out), L, "After Costas Loop Eye Diagram")
+plot_eye(np.real(out[30:]), np.imag(out[30:]), L, "After Costas Loop Eye Diagram")
 
 
 # ANIMATE M&M LOOP
