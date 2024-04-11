@@ -33,6 +33,29 @@ def create_packet(data, num_reps):
     return packet
 
 
+def string_to_ascii(word):
+    string = []
+    string = [ord(ele) for sub in word for ele in sub]
+    bits = []
+    for index, i in enumerate(string):
+        for q in range(8):
+            bits.append((string[index] >> q) & 0x01)
+    return bits
+
+
+def ascii_to_string(bits):
+    temp = 0
+    word = []
+    for index, i in enumerate(bits):
+        if ((index + 1) % 8) * i != 0:
+            temp = temp + 2 ** (i * (index % 8))
+
+        if (index + 1) % 8 == 0:
+            word.append(chr(temp))
+            temp = 0
+    return word
+
+
 class QAMModem:
 
     def __init__(self, symbol_rate, M=16, alpha=0.9, f_carrier=1500, fs=48000):
@@ -341,47 +364,47 @@ class QAMModem:
                  "1011": [3, -1],
                  "1010": [3, -3]}
 
+
 ### TEST CODE ###
 
 # np.set_printoptions(threshold=sys.maxsize)
 #
 # # ==> MODULATE <===
 # # n_symbols = 2400
-# modem = QAMModem(800)
-# test_bits = np.array([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1,
-#                       0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0,
-#                       1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0,
-#                       0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1])
-#
-# # test, TX_bits = modem.packet_and_modulate_bits(test_bits, plots=False)
-#
+modem = QAMModem(800)
+word = ""
+
+test, TX_bits = modem.packet_and_modulate_bits(string_to_ascii(word), plots=False, play_sig=True)
+
 # # ==> DEMODULATE <===
-# Fs, rcc = wavfile.read("../gui/ReceivedAudio.wav")
-# add_noise = False
-# assert Fs == 48000
-#
-# plt.plot(rcc)
-# plt.show()
-#
-# if add_noise:
-#     # Create and apply fractional delay filter and plot constellation maps
-#     delay = 60  # fractional delay, in samples
-#     N = 21  # number of taps
-#     n = np.arange(N)  # 0,1,2,3...
-#     h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
-#     h *= np.hamming(N)  # window the filter to make sure it decays to 0 on both sides
-#     h /= np.sum(h)  # normalize to get unity gain, we don't want to change the amplitude/power
-#     rcc = np.convolve(rcc, h)  # apply filter
-#
-#     # # Apply a freq offset
-#     fo = 1  # simulate freq offset
-#     Ts = 1 / Fs  # calc sample period
-#     t = np.arange(0, Ts * len(rcc), Ts)  # create time vector
-#
-#     rcc = rcc * np.exp(2 * np.pi * 1j * fo * t[0:len(rcc)])  # freq shift
-#
-# RX_symbols = modem.demodulate_signal(rcc)
-# print(RX_symbols)
-# data = modem.get_data_from_stream(RX_symbols)
-#
-# print(data)
+Fs, rcc = wavfile.read("../modem/MQAM_modulated_wave.wav")
+add_noise = False
+assert Fs == 48000
+
+plt.plot(rcc)
+plt.show()
+
+if add_noise:
+    # Create and apply fractional delay filter and plot constellation maps
+    delay = 60  # fractional delay, in samples
+    N = 21  # number of taps
+    n = np.arange(N)  # 0,1,2,3...
+    h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
+    h *= np.hamming(N)  # window the filter to make sure it decays to 0 on both sides
+    h /= np.sum(h)  # normalize to get unity gain, we don't want to change the amplitude/power
+    rcc = np.convolve(rcc, h)  # apply filter
+
+    # # Apply a freq offset
+    fo = 1  # simulate freq offset
+    Ts = 1 / Fs  # calc sample period
+    t = np.arange(0, Ts * len(rcc), Ts)  # create time vector
+
+    rcc = rcc * np.exp(2 * np.pi * 1j * fo * t[0:len(rcc)])  # freq shift
+
+RX_symbols = modem.demodulate_signal(rcc)
+print(RX_symbols)
+data = modem.get_data_from_stream(RX_symbols)
+
+print(data)
+
+print("Recovered ASCII: ", ''.join(char for char in ascii_to_string(data) if 0 < ord(char) < 128)) # filter out invalid chars

@@ -10,12 +10,12 @@ from tools.helpers import plot_mag_fft
 # ===> TEST MODULATOR <===
 
 Fs = 48000  # samp freq
-symbol_rate = 2400  # symbols per second (2400*4 = 9600 bps)
+symbol_rate = 1200  # symbols per second (2400*4 = 9600 bps)
 Ns = int(Fs / symbol_rate)  # samples per bit
 M = 16  # constellation size
-N_sym = 1000  # num of symbols
-f_c = 10000  # carrier freq
-alpha = 0.5  # roll-off factor, increases bandwidth
+N_sym = 20000  # num of symbols
+f_c = 2500  # carrier freq
+alpha = 0.7  # roll-off factor, increases bandwidth
 
 xbb, h, data = dc.qam_gray_encode_bb(N_sym, Ns, M, pulse='src', alpha=alpha)
 n = np.arange(0, len(xbb))
@@ -34,17 +34,17 @@ wavfile.write('xc1_complex.wav', Fs, np.array(xc1, dtype=np.float32))
 # ===> TEST CHANNEL <===
 
 # Read the saved .wav file
-Fs, rcc = wavfile.read('xc1_complex.wav')
+Fs, rcc = wavfile.read('xc1_complex_dsp_5kc_1200sps.wav')
 n = np.arange(0, len(rcc))
 
-# AWGN
-EbN0_dB = 20
-EsN0_dB = 10 * np.log10(np.log2(M)) + EbN0_dB
-rcc = dc.cpx_awgn(rcc, EsN0_dB, Ns)
-
-# Freq error
-F_error = 0.125  # hz
-rcc *= np.exp(1j * 2 * np.pi * (F_error / Fs) * n)  # Df = 0.012*Rb or 1.2% of Rb
+# # AWGN
+# EbN0_dB = 20
+# EsN0_dB = 10 * np.log10(np.log2(M)) + EbN0_dB
+# rcc = dc.cpx_awgn(rcc, EsN0_dB, Ns)
+#
+# # Freq error
+# F_error = 10  # hz
+# rcc *= np.exp(1j * 2 * np.pi * (F_error / Fs) * n)  # Df = 0.012*Rb or 1.2% of Rb
 
 # ===> TEST DEMODULATOR <===
 rbb = rcc * np.exp(-1j * 2 * np.pi * (f_c / Fs) * n)  # carrier removal

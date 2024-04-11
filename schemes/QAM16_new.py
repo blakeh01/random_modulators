@@ -63,7 +63,7 @@ plt.grid(True)
 plt.show()
 
 # Create our raised-cosine filter and filter
-alpha = 0.6
+alpha = 0.7
 b = sigsys.sqrt_rc_imp(Ns, alpha)
 xbb = signal.lfilter(b, 1, sig)
 b = b/sum(b)  # make unity gain for RX
