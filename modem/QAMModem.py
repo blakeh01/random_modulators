@@ -32,6 +32,28 @@ def create_packet(data, num_reps):
 
     return packet
 
+def string_to_ascii(word):
+    string = []
+    string = [ord(ele) for sub in word for ele in sub]
+    bits = []
+    for index, i in enumerate(string):
+        for q in range(8):
+            bits.append((string[index] >> q) & 0x01)
+    return bits
+
+
+def ascii_to_string(bits):
+    temp = 0
+    word = []
+    for index, i in enumerate(bits):
+        if ((index + 1) % 8) * i != 0:
+            temp = temp + 2 ** (i * (index % 8))
+
+        if (index + 1) % 8 == 0:
+            word.append(chr(temp))
+            temp = 0
+    return word
+
 
 class QAMModem:
 
@@ -378,4 +400,4 @@ if add_noise:
 
 raw_IQ = modem.demodulate_signal(rcc)
 data = modem.get_data_from_stream(raw_IQ)
-print(data)
+print("Recovered ASCII: ", ''.join(char for char in ascii_to_string(data) if 0 < ord(char) < 128)) # filter out invalid chars
