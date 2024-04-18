@@ -12,7 +12,7 @@ from crcmod import crcmod
 
 from scipy import signal
 from scipy.io import wavfile
-from tools.helpers import plot_mag_fft, plot_constellation_2
+from tools.helpers import plot_mag_fft, plot_constellation_2, preamble_gen
 
 
 def create_packet(data, num_reps):
@@ -58,6 +58,8 @@ class QAMModem:
 
         self.sync_bits = self.generate_sync()
         self.preamble_bits = self.generate_preamble()
+
+        self.constellation_plot = None # used in live updating constellation map
 
     def packet_and_modulate_bits(self, data_bits, write_to_wav=True, play_sig=False, plots=True):
         """
@@ -186,65 +188,37 @@ class QAMModem:
         out_pll, a_hat, e_phi, theta_hat = sync.DD_carrier_sync(out, self.M, 0.1, 0.707, mod_type='MQAM', type=1)
         if plots: plot_constellation_2(out.real, out.imag, out_pll.real, out_pll.imag, ["Before PLL", "After PLL"])
 
+        # find where output error is lowest to remove sync symbols
+        moving_avg = []
+        window_size = 10
+        sample_index = 0
+        min_carrier_error = 0.05
+        for i in range(len(e_phi) - window_size + 1):
+            window = e_phi[i:i + window_size]
+            avg = sum(abs(x) for x in window) / window_size
+            moving_avg.append(avg)
+
+        for i, avg in enumerate(moving_avg):
+            if avg < min_carrier_error:
+                sample_index = i + window_size // 2
+                break
+
+        out_pll = out_pll[sample_index:]
+        print("Removed " + str(sample_index) + " sync symbols... Expected number of sync symbols: "
+              + str(int(len(self.sync_bits) / math.log2(self.M))))
+
+        if sample_index > len(self.sync_bits) / math.log2(self.M):
+            print("WARN: Removed more than the number of sync bits! PLL did not converge, reduce the symbol rate.")
+
         if plots:
-            plt.plot(e_phi)
+            plt.plot(abs(e_phi))
+            plt.axvline(x=sample_index, color='r', linestyle='--')  # Adding vertical line
             plt.title("Carrier Timing Error")
             plt.ylabel("Error")
             plt.xlabel("Sample [n]")
             plt.show()
 
-        # retrieve symbols from constellation map
-        symbols = self.get_symbols_from_map(out_pll, plots)
-
-        # check phase ambiguity
-        desired_symbols = ['0000', '1000', '1010', '0010']  # possible configurations
-        symbols_filtered = [symbol for symbol in symbols if symbol in desired_symbols]
-        symbols_unique, symbols_counts = np.unique(symbols_filtered, return_counts=True)
-
-        if plots:
-            plt.figure(figsize=(8, 6))
-            plt.bar(symbols_unique, symbols_counts)
-            plt.title("Symbol Occurrence")
-            plt.xlabel("Symbols")
-            plt.ylabel("Occurrence Count")
-            plt.grid(True)
-            plt.show()
-
-        most_common_symbol = symbols_unique[np.argmax(symbols_counts)]
-        print("Possible phase detection symbol:", most_common_symbol)
-
-        # if the most common symbol is not 0000 (our alignment symbol) then we need to rotate the map
-        if most_common_symbol == '1000':
-            print("Phase ambiguity detected by pi/2")
-            out_pll = out_pll * np.exp(1j * (np.pi / 2))
-        elif most_common_symbol == '1010':
-            print("Phase ambiguity detected by pi")
-            out_pll = out_pll * np.exp(1j * np.pi)
-        elif most_common_symbol == '0010':
-            print("Phase ambiguity detected by -pi/2")
-            out_pll = out_pll * np.exp(-1j * (np.pi / 2))
-        else:
-            print("No phase ambiguity detected.")
-            return symbols
-
-        # RECALC SYMBOLS WITH ROTATION
-        symbols = self.get_symbols_from_map(out_pll, plots)
-
-        # show bar graph after correction
-        if plots:
-            desired_symbols = ['0000', '1000', '1010', '0010']  # possible configurations
-            symbols_filtered = [symbol for symbol in symbols if symbol in desired_symbols]
-
-            plt.figure(figsize=(8, 6))
-            symbols_unique, symbols_counts = np.unique(symbols_filtered, return_counts=True)
-            plt.bar(symbols_unique, symbols_counts)
-            plt.title("Symbol Occurrence")
-            plt.xlabel("Symbols")
-            plt.ylabel("Occurrence Count")
-            plt.grid(True)
-            plt.show()
-
-        return symbols
+        return out_pll
 
     def get_symbols_from_map(self, map_points, plots=True):
         """
@@ -267,6 +241,8 @@ class QAMModem:
         for point in map_points:
             x = point.real
             y = point.imag
+
+            if self.constellation_plot: self.constellation_plot.addPoints(x=np.array([x]), y=np.array([y]))
 
             distances = np.sqrt((x - ideal_x) ** 2 + (y - ideal_y) ** 2)
             closest_index = np.argmin(distances)
@@ -296,21 +272,38 @@ class QAMModem:
 
         return symbols
 
-    def get_data_from_stream(self, symbols):
+    def get_data_from_stream(self, raw_IQ, plots=True):
         """
-        Detects preamble in symbol stream and returns the data within the message.
+        Detects preamble in data stream and returns the data within the message.
+        Preamble can be rotated by the phase ambiguity amounts of k*pi/2
 
-        :param symbols: symbols from demodulation step. Should include all sync words, preamble, and data
+        :param raw_IQ: raw IQ data from the demodulation step
         :return: All symbols sent with the preamble if detected, otherwise 'None'.
         """
+        symbols = self.get_symbols_from_map(raw_IQ, plots)
         bits = [int(bit) for group in symbols for bit in group]
-        correlation = np.correlate(bits, self.preamble_bits, mode='valid')
-        max_correlation_index = np.argmax(np.abs(correlation))
-        extracted_preamble_and_symbols = bits[max_correlation_index: max_correlation_index + len(self.preamble_bits)]
+        states = preamble_gen(self.preamble_bits)
 
-        if np.array_equal(extracted_preamble_and_symbols, self.preamble_bits):
-            print("Preamble detected, extracting data...")
-            return bits[max_correlation_index + len(self.preamble_bits):]  # return only the data
+        for i, shifted_preamble in enumerate(states):
+            idx = np.argmax(np.correlate(bits, shifted_preamble, mode='valid'))
+            extracted_preamble = bits[idx: idx + len(shifted_preamble)]
+
+            if np.array_equal(extracted_preamble, shifted_preamble):
+                if i == 0:
+                    print("Preamble detected with no phase offset!")
+                elif i == 1:
+                    print("Preamble detected with pi/2 offset!")
+                    raw_IQ = raw_IQ * np.exp(-1j * (np.pi / 2))
+                elif i == 2:
+                    print("Preamble detected with pi offset!")
+                    raw_IQ = raw_IQ * np.exp(1j * np.pi)
+                elif i == 3:
+                    print("Preamble detected with -pi/2 offset!")
+                    raw_IQ = raw_IQ * np.exp(1j * (np.pi / 2))
+
+                symbols = self.get_symbols_from_map(raw_IQ, plots)
+                bits = [int(bit) for group in symbols for bit in group]
+                return bits[idx + len(shifted_preamble):]
 
         print("Preamble not detected.")
         return None
@@ -341,47 +334,48 @@ class QAMModem:
                  "1011": [3, -1],
                  "1010": [3, -3]}
 
+    def set_constellation_plot(self, scatter_item):
+        self.set_constellation_plot = scatter_item
+
 ### TEST CODE ###
 
 # np.set_printoptions(threshold=sys.maxsize)
 #
 # # ==> MODULATE <===
 # # n_symbols = 2400
-# modem = QAMModem(800)
-# test_bits = np.array([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1,
-#                       0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0,
-#                       1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0,
-#                       0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1])
-#
-# # test, TX_bits = modem.packet_and_modulate_bits(test_bits, plots=False)
-#
-# # ==> DEMODULATE <===
-# Fs, rcc = wavfile.read("../gui/ReceivedAudio.wav")
-# add_noise = False
-# assert Fs == 48000
-#
-# plt.plot(rcc)
-# plt.show()
-#
-# if add_noise:
-#     # Create and apply fractional delay filter and plot constellation maps
-#     delay = 60  # fractional delay, in samples
-#     N = 21  # number of taps
-#     n = np.arange(N)  # 0,1,2,3...
-#     h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
-#     h *= np.hamming(N)  # window the filter to make sure it decays to 0 on both sides
-#     h /= np.sum(h)  # normalize to get unity gain, we don't want to change the amplitude/power
-#     rcc = np.convolve(rcc, h)  # apply filter
-#
-#     # # Apply a freq offset
-#     fo = 1  # simulate freq offset
-#     Ts = 1 / Fs  # calc sample period
-#     t = np.arange(0, Ts * len(rcc), Ts)  # create time vector
-#
-#     rcc = rcc * np.exp(2 * np.pi * 1j * fo * t[0:len(rcc)])  # freq shift
-#
-# RX_symbols = modem.demodulate_signal(rcc)
-# print(RX_symbols)
-# data = modem.get_data_from_stream(RX_symbols)
-#
-# print(data)
+modem = QAMModem(800)
+test_bits = np.array([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1,
+                      0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0,
+                      1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0,
+                      0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1])
+
+# test, TX_bits = modem.packet_and_modulate_bits(test_bits, plots=False)
+
+# ==> DEMODULATE <===
+Fs, rcc = wavfile.read("../gui/ReceivedAudio.wav")
+add_noise = False
+assert Fs == 48000
+
+plt.plot(rcc)
+plt.show()
+
+if add_noise:
+    # Create and apply fractional delay filter and plot constellation maps
+    delay = 60  # fractional delay, in samples
+    N = 21  # number of taps
+    n = np.arange(N)  # 0,1,2,3...
+    h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
+    h *= np.hamming(N)  # window the filter to make sure it decays to 0 on both sides
+    h /= np.sum(h)  # normalize to get unity gain, we don't want to change the amplitude/power
+    rcc = np.convolve(rcc, h)  # apply filter
+
+    # # Apply a freq offset
+    fo = 1  # simulate freq offset
+    Ts = 1 / Fs  # calc sample period
+    t = np.arange(0, Ts * len(rcc), Ts)  # create time vector
+
+    rcc = rcc * np.exp(2 * np.pi * 1j * fo * t[0:len(rcc)])  # freq shift
+
+raw_IQ = modem.demodulate_signal(rcc)
+data = modem.get_data_from_stream(raw_IQ)
+print(data)

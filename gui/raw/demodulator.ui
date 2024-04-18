@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>521</width>
-    <height>346</height>
+    <width>840</width>
+    <height>880</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,11 +19,20 @@
      <rect>
       <x>30</x>
       <y>10</y>
-      <width>301</width>
+      <width>331</width>
       <height>51</height>
      </rect>
     </property>
     <layout class="QGridLayout" name="gridLayout">
+     <property name="leftMargin">
+      <number>10</number>
+     </property>
+     <property name="rightMargin">
+      <number>10</number>
+     </property>
+     <property name="spacing">
+      <number>10</number>
+     </property>
      <item row="0" column="1">
       <widget class="QLabel" name="lbl_info_symbolrate">
        <property name="font">
@@ -106,10 +115,10 @@
    <widget class="QListWidget" name="list_receivedmessages">
     <property name="geometry">
      <rect>
-      <x>340</x>
-      <y>70</y>
-      <width>171</width>
-      <height>231</height>
+      <x>360</x>
+      <y>40</y>
+      <width>461</width>
+      <height>261</height>
      </rect>
     </property>
    </widget>
@@ -118,7 +127,7 @@
      <rect>
       <x>30</x>
       <y>70</y>
-      <width>301</width>
+      <width>331</width>
       <height>71</height>
      </rect>
     </property>
@@ -169,23 +178,36 @@
    <widget class="QLabel" name="lbl_indicator">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>280</y>
-      <width>47</width>
-      <height>21</height>
+      <x>36</x>
+      <y>270</y>
+      <width>31</width>
+      <height>31</height>
      </rect>
     </property>
+    <property name="font">
+     <font>
+      <pointsize>20</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">color: red</string>
+    </property>
     <property name="text">
-     <string>indicator</string>
+     <string>•</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
     </property>
    </widget>
    <widget class="QLabel" name="lbl_info_receivedmessages">
     <property name="geometry">
      <rect>
-      <x>346</x>
-      <y>50</y>
-      <width>161</width>
-      <height>20</height>
+      <x>360</x>
+      <y>10</y>
+      <width>461</width>
+      <height>31</height>
      </rect>
     </property>
     <property name="font">
@@ -202,13 +224,23 @@
      <set>Qt::AlignCenter</set>
     </property>
    </widget>
+   <widget class="PlotWidget" name="constellation_widget" native="true">
+    <property name="geometry">
+     <rect>
+      <x>170</x>
+      <y>320</y>
+      <width>500</width>
+      <height>500</height>
+     </rect>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>521</width>
+     <width>840</width>
      <height>22</height>
     </rect>
    </property>
@@ -218,7 +250,13 @@
     </property>
     <addaction name="actionExit"/>
    </widget>
+   <widget class="QMenu" name="menuAbout">
+    <property name="title">
+     <string>About</string>
+    </property>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuAbout"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionExit">
@@ -227,6 +265,14 @@
    </property>
   </action>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>PlotWidget</class>
+   <extends>QWidget</extends>
+   <header>pyqtgraph</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

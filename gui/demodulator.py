@@ -1,12 +1,14 @@
 import os
 import sys
 
+from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMainWindow, QListWidgetItem
-from demodulator_gui import UI_Demodulator  # Import your UI class from your module
+from demodulator_gui import UI_Demodulator
 from threading import Thread
 import pyaudio
 import numpy as np
+import pyqtgraph as pg
 from scipy.io import wavfile
 
 from modem.QAMModem import QAMModem
@@ -88,6 +90,8 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.demodulate)
         self.timer.start(1000)
 
+        self.setup_graphs()
+
     def demodulate(self):
         """
         Checks to see if the audio file has changed since the last demodulation, if so, demodulate it and
@@ -118,13 +122,46 @@ class MainWindow(QMainWindow):
             print("Stopping Demodulator...")
             self.audio_thread.stop()
             self.audio_thread.join()
+            self.ui.lbl_indicator.setStyleSheet("color: red;")
             return
 
         self.audio_thread = AudioProcessingThread(self.filename)
         self.audio_thread.start()
+        self.ui.lbl_indicator.setStyleSheet("color: green;")
+
+    def setup_graphs(self):
+        self.ui.constellation_widget.setBackground('w')
+        self.ui.constellation_widget.setXRange(-1, 1)
+        self.ui.constellation_widget.setYRange(-1, 1)
+        self.ui.constellation_widget.hideAxis('left')
+        self.ui.constellation_widget.hideAxis('bottom')
+        self.ui.constellation_widget.setTitle("Constellation Map (M=" + str(self.modem.M) + ")")
+
+        ideal_x = np.array([point[0] for point in self.modem.constellation_map().values()])
+        ideal_y = np.array([point[1] for point in self.modem.constellation_map().values()])
+
+        ideal_x = ideal_x / np.max(ideal_x)
+        ideal_y = ideal_y / np.max(ideal_y)
+
+        self.ui.constellation_widget.addItem(pg.ScatterPlotItem(x=ideal_x, y=ideal_y))  # plot ideals
+
+        # create plot object to live updating map
+        constellation_plot = pg.ScatterPlotItem(pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 40), size=2)
+        self.ui.constellation_widget.addItem(constellation_plot)
+        self.modem.set_constellation_plot(constellation_plot)
 
 
 def main():
+    if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+
+    # todo switch when moving to pi
+    if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+    # else:
+    #     if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+    #         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, False)
+
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()

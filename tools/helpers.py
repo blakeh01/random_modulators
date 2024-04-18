@@ -49,6 +49,75 @@ def plot_constellation_2(real1, imag1, real2, imag2, titles):
     # ax2.set_ylim([-4, 4])
     plt.show()
 
-def gardners_loop(sig):
-
-    return None
+def preamble_gen(preamble):
+    shift_preamble = [[], [], [], []]
+    shift_preamble[0] = preamble
+    preamble = np.reshape(preamble, (int(len(preamble) / 4), 4))
+    for i in preamble:
+        if np.array_equal(i, [0, 0, 0, 0]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 0, 1, 0]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [1, 0, 1, 0]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 0, 0, 0]))
+        elif np.array_equal(i, [0, 0, 0, 1]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 1, 1, 0]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [1, 0, 1, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 1, 0, 0]))
+        elif np.array_equal(i, [0, 0, 1, 0]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [1, 0, 1, 0]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [1, 0, 0, 0]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [0, 0, 0, 0]))
+        elif np.array_equal(i, [0, 0, 1, 1]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [1, 1, 1, 0]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [1, 0, 0, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [0, 1, 0, 0]))
+        elif np.array_equal(i, [0, 1, 0, 0]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 0, 1, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [1, 1, 1, 0]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 0, 0, 1]))
+        elif np.array_equal(i, [0, 1, 0, 1]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 1, 1, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [1, 1, 1, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 1, 0, 1]))
+        elif np.array_equal(i, [0, 1, 1, 0]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [1, 0, 1, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [1, 1, 0, 0]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [0, 0, 0, 1]))
+        elif np.array_equal(i, [0, 1, 1, 1]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [1, 1, 1, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [1, 1, 0, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [0, 1, 0, 1]))
+        elif np.array_equal(i, [1, 0, 0, 0]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 0, 0, 0]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [0, 0, 1, 0]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 0, 1, 0]))
+        elif np.array_equal(i, [1, 0, 0, 1]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 1, 0, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [0, 0, 1, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 1, 1, 0]))
+        elif np.array_equal(i, [1, 0, 1, 0]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 1, 0, 0]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [0, 0, 1, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 1, 1, 0]))
+        elif np.array_equal(i, [1, 0, 1, 1]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [1, 1, 0, 0]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [0, 0, 0, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [0, 1, 1, 0]))
+        elif np.array_equal(i, [1, 1, 0, 0]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 0, 0, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [0, 1, 1, 0]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 0, 1, 1]))
+        elif np.array_equal(i, [1, 1, 0, 1]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [0, 1, 0, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [0, 1, 1, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [1, 1, 1, 1]))
+        elif np.array_equal(i, [1, 1, 1, 0]):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [1, 0, 0, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [0, 1, 0, 0]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [0, 0, 1, 1]))
+        elif (np.array_equal(i, [1, 1, 1, 1])):
+            shift_preamble[1] = np.concatenate((shift_preamble[1], [1, 1, 0, 1]))
+            shift_preamble[2] = np.concatenate((shift_preamble[2], [0, 1, 0, 1]))
+            shift_preamble[3] = np.concatenate((shift_preamble[3], [0, 1, 1, 1]))
+        for j in range(4):
+            shift_preamble[j] = list([int(x) for x in shift_preamble[j]])
+    return shift_preamble
