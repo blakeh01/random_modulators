@@ -1,5 +1,7 @@
+import math
 import os
 import sys
+import time
 
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QTimer
@@ -11,7 +13,7 @@ import numpy as np
 import pyqtgraph as pg
 from scipy.io import wavfile
 
-from modem.QAMModem import QAMModem
+from modem.QAMModem import QAMModem, ascii_to_string
 
 FORMAT = pyaudio.paFloat32
 CHANNELS = 1
@@ -88,9 +90,13 @@ class MainWindow(QMainWindow):
         # handle file change
         self.timer = QTimer()
         self.timer.timeout.connect(self.demodulate)
-        self.timer.start(1000)
+        self.timer.start(100)
+
+        # handle symbol rate adjustment
+        self.ui.txt_symbolrate.returnPressed.connect(self.on_symbol_rate_change)
 
         self.setup_graphs()
+        self.setup_gui()
 
     def demodulate(self):
         """
@@ -103,19 +109,25 @@ class MainWindow(QMainWindow):
                 self.received_packets = self.received_packets + 1
                 self.last_modified_time = current_modified_time
 
+                start = time.time()
                 fs, rcc = wavfile.read(self.filename)
                 assert fs == 48000
 
                 rx_symbols = self.modem.demodulate_signal(rcc, plots=False)
-                data = self.modem.get_data_from_stream(rx_symbols)
+                data = self.modem.get_data_from_stream(rx_symbols, plots=False)
                 if data is None:
                     self.dropped_packets = self.dropped_packets + 1
                 else:
-                    formatted_data = [''.join(str(bit) for bit in data)]
-                    self.ui.list_receivedmessages.addItem(QListWidgetItem(str(formatted_data)))
+                    rec_ascii = ''.join(char for char in ascii_to_string(data) if 0 < ord(char) < 128)
+                    print("Recovered ASCII: ", rec_ascii)
+                    print("Processing time: ", time.time() - start, " s")
+                    self.ui.list_receivedmessages.addItem(QListWidgetItem(str(rec_ascii)))
 
         except Exception as e:
             print("Error:", e)
+
+        self.ui.lbl_receivedpackets.setText(str(self.received_packets))
+        self.ui.lbl_droppedpackets.setText(str(self.dropped_packets))
 
     def start_recording(self):
         if self.audio_thread and self.audio_thread.is_alive():
@@ -146,9 +158,26 @@ class MainWindow(QMainWindow):
         self.ui.constellation_widget.addItem(pg.ScatterPlotItem(x=ideal_x, y=ideal_y))  # plot ideals
 
         # create plot object to live updating map
-        constellation_plot = pg.ScatterPlotItem(pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 40), size=2)
+        constellation_plot = pg.ScatterPlotItem(pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 50), size=4)
         self.ui.constellation_widget.addItem(constellation_plot)
         self.modem.set_constellation_plot(constellation_plot)
+
+    def setup_gui(self):
+        self.ui.txt_symbolrate.setText("800")
+
+        try:
+            self.ui.lbl_effective_bitrate.setText(str(int(int(self.ui.txt_symbolrate.text()) * math.log2(self.modem.M))) + " bps")
+        except Exception as e:
+            print(e)
+
+    def on_symbol_rate_change(self):
+        try:
+            self.ui.lbl_effective_bitrate.setText(str(int(int(self.ui.txt_symbolrate.text()) * math.log2(self.modem.M))) + " bps")
+        except Exception as e:
+            print(e)
+            return
+
+        self.modem.set_symbol_rate(int(self.ui.txt_symbolrate.text()))
 
 
 def main():

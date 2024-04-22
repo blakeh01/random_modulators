@@ -75,7 +75,7 @@ class QAMModem:
         self.alpha = alpha
         self.f_carrier = f_carrier
 
-        self.matched_filter = sigsys.sqrt_rc_imp(self.sps, alpha)
+        self.matched_filter = sigsys.sqrt_rc_imp(self.sps, self.alpha)
         self.matched_filter_RX = self.matched_filter / sum(self.matched_filter)  # normalize gain for RX
 
         self.sync_bits = self.generate_sync()
@@ -104,8 +104,6 @@ class QAMModem:
         constellation = self.constellation_map()
         group_size = int(math.log2(self.M))
         grouped_bits = [''.join(str(bit) for bit in bits[i:i + group_size]) for i in range(0, len(bits), group_size)]
-
-        print(grouped_bits)
 
         # Map each symbol index to amplitude levels for I and Q channels
         for sym in grouped_bits:
@@ -230,7 +228,7 @@ class QAMModem:
               + str(int(len(self.sync_bits) / math.log2(self.M))))
 
         if sample_index > len(self.sync_bits) / math.log2(self.M):
-            print("WARN: Removed more than the number of sync bits! PLL did not converge, reduce the symbol rate.")
+            print("WARN: Removed more than the number of sync bits! PLL did not converge, reduce the symbol rate or increase sync symbols.")
 
         if plots:
             plt.plot(abs(e_phi))
@@ -242,7 +240,7 @@ class QAMModem:
 
         return out_pll
 
-    def get_symbols_from_map(self, map_points, plots=True):
+    def get_symbols_from_map(self, map_points, plots=False):
         """
         Given a list of complex points, maps them to the NORMALIZED constellation map. Use euclidean distance to find
         the proper symbol.
@@ -260,11 +258,12 @@ class QAMModem:
         symbols = []
         idx = []  # Array to store the index of the closest ideal constellation point for each RX point
 
+        if self.constellation_plot:
+            self.constellation_plot.addPoints(x=map_points.real, y=map_points.imag)
+
         for point in map_points:
             x = point.real
             y = point.imag
-
-            if self.constellation_plot: self.constellation_plot.addPoints(x=np.array([x]), y=np.array([y]))
 
             distances = np.sqrt((x - ideal_x) ** 2 + (y - ideal_y) ** 2)
             closest_index = np.argmin(distances)
@@ -294,7 +293,7 @@ class QAMModem:
 
         return symbols
 
-    def get_data_from_stream(self, raw_IQ, plots=True):
+    def get_data_from_stream(self, raw_IQ, plots=False):
         """
         Detects preamble in data stream and returns the data within the message.
         Preamble can be rotated by the phase ambiguity amounts of k*pi/2
@@ -357,7 +356,14 @@ class QAMModem:
                  "1010": [3, -3]}
 
     def set_constellation_plot(self, scatter_item):
-        self.set_constellation_plot = scatter_item
+        self.constellation_plot = scatter_item
+
+    def set_symbol_rate(self, symbol_rate):
+        self.symbol_rate = symbol_rate
+        self.sps = int(self.fs / self.symbol_rate)
+
+        self.matched_filter = sigsys.sqrt_rc_imp(self.sps, self.alpha)
+        self.matched_filter_RX = self.matched_filter / sum(self.matched_filter)  # normalize gain for RX
 
 ### TEST CODE ###
 
@@ -365,39 +371,40 @@ class QAMModem:
 #
 # # ==> MODULATE <===
 # # n_symbols = 2400
-modem = QAMModem(800)
-test_bits = np.array([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1,
-                      0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0,
-                      1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0,
-                      0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1])
+# modem = QAMModem(800)
+# test_bits = np.array([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1,
+#                       0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0,
+#                       1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0,
+#                       0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1])
 
 # test, TX_bits = modem.packet_and_modulate_bits(test_bits, plots=False)
 
 # ==> DEMODULATE <===
-Fs, rcc = wavfile.read("../gui/ReceivedAudio.wav")
-add_noise = False
-assert Fs == 48000
-
-plt.plot(rcc)
-plt.show()
-
-if add_noise:
-    # Create and apply fractional delay filter and plot constellation maps
-    delay = 60  # fractional delay, in samples
-    N = 21  # number of taps
-    n = np.arange(N)  # 0,1,2,3...
-    h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
-    h *= np.hamming(N)  # window the filter to make sure it decays to 0 on both sides
-    h /= np.sum(h)  # normalize to get unity gain, we don't want to change the amplitude/power
-    rcc = np.convolve(rcc, h)  # apply filter
-
-    # # Apply a freq offset
-    fo = 1  # simulate freq offset
-    Ts = 1 / Fs  # calc sample period
-    t = np.arange(0, Ts * len(rcc), Ts)  # create time vector
-
-    rcc = rcc * np.exp(2 * np.pi * 1j * fo * t[0:len(rcc)])  # freq shift
-
-raw_IQ = modem.demodulate_signal(rcc)
-data = modem.get_data_from_stream(raw_IQ)
-print("Recovered ASCII: ", ''.join(char for char in ascii_to_string(data) if 0 < ord(char) < 128)) # filter out invalid chars
+# Fs, rcc = wavfile.read("../gui/ReceivedAudio.wav")
+# add_noise = False
+# assert Fs == 48000
+#
+# plt.plot(rcc)
+# plt.show()
+#
+# if add_noise:
+#     # Create and apply fractional delay filter and plot constellation maps
+#     delay = 60  # fractional delay, in samples
+#     N = 21  # number of taps
+#     n = np.arange(N)  # 0,1,2,3...
+#     h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
+#     h *= np.hamming(N)  # window the filter to make sure it decays to 0 on both sides
+#     h /= np.sum(h)  # normalize to get unity gain, we don't want to change the amplitude/power
+#     rcc = np.convolve(rcc, h)  # apply filter
+#
+#     # # Apply a freq offset
+#     fo = 1  # simulate freq offset
+#     Ts = 1 / Fs  # calc sample period
+#     t = np.arange(0, Ts * len(rcc), Ts)  # create time vector
+#
+#     rcc = rcc * np.exp(2 * np.pi * 1j * fo * t[0:len(rcc)])  # freq shift
+#
+# raw_IQ = modem.demodulate_signal(rcc)
+# data = modem.get_data_from_stream(raw_IQ)
+# print(data)
+# print("Recovered ASCII: ", ''.join(char for char in ascii_to_string(data) if 0 < ord(char) < 128)) # filter out invalid chars
