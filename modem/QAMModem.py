@@ -5,7 +5,7 @@ import math
 
 import numpy as np
 import matplotlib.pyplot as plt
-import pyaudio
+import sounddevice as sd
 import sk_dsp_comm.sigsys as sigsys
 import sk_dsp_comm.synchronization as sync
 from crcmod import crcmod
@@ -120,10 +120,28 @@ class QAMModem:
         # apply rrc filter
         xbb = signal.lfilter(self.matched_filter, 1, x_IQ)  # baseband signal
         if plots:
+            plt.subplot(2, 1, 1)
+            plt.stem(pulse_train_I, 'b')
+            plt.title("In-Phase Bitstream")
+            plt.subplot(2, 1, 2)
+            plt.stem(pulse_train_Q, 'orange')
+            plt.title("Quadrature Bitstream")
+            plt.show()
+
+            plot_mag_fft(x_IQ, self.fs, 'Before Pulse Shaping Filter')
+
             plt.stem(self.matched_filter)
             plt.title("RRC Impulse Response")
             plt.show()
-            plot_mag_fft(xbb, self.fs, 'Filtered Symbols')
+            plot_mag_fft(xbb, self.fs, 'After Pulse Shaping Filter')
+
+            plt.subplot(2, 1, 1)
+            plt.plot(xbb.real, 'b')
+            plt.title("In-Phase Shaped Data")
+            plt.subplot(2, 1, 2)
+            plt.plot(xbb.imag, 'orange')
+            plt.title("Quadrature Shaped Data")
+            plt.show()
 
         # apply carrier using DTFT shift property
         n = np.arange(len(xbb))
@@ -139,18 +157,8 @@ class QAMModem:
 
         # play .wav file here
         if play_sig:
-            p = pyaudio.PyAudio()
-
-            stream = p.open(format=pyaudio.paFloat32,
-                            channels=1,
-                            rate=self.fs,
-                            output=True)
-
-            stream.write(np.array(xc, dtype=np.float32).tobytes())
-            stream.stop_stream()
-            stream.close()
-            p.terminate()
-
+            xc = np.array(xc, dtype=np.float32)
+            sd.play(xc, self.fs)
         return xc, bits  # return raw data bits for BER
 
     def generate_sync(self, sync_len=100):
@@ -372,38 +380,38 @@ class QAMModem:
 # # ==> MODULATE <===
 # # n_symbols = 2400
 # modem = QAMModem(800)
-# test_bits = np.array([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1,
-#                       0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0,
-#                       1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0,
-#                       0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1])
-
-# test, TX_bits = modem.packet_and_modulate_bits(test_bits, plots=False)
-
-# ==> DEMODULATE <===
-# Fs, rcc = wavfile.read("../gui/ReceivedAudio.wav")
-# add_noise = False
-# assert Fs == 48000
-#
-# plt.plot(rcc)
-# plt.show()
-#
-# if add_noise:
-#     # Create and apply fractional delay filter and plot constellation maps
-#     delay = 60  # fractional delay, in samples
-#     N = 21  # number of taps
-#     n = np.arange(N)  # 0,1,2,3...
-#     h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
-#     h *= np.hamming(N)  # window the filter to make sure it decays to 0 on both sides
-#     h /= np.sum(h)  # normalize to get unity gain, we don't want to change the amplitude/power
-#     rcc = np.convolve(rcc, h)  # apply filter
-#
-#     # # Apply a freq offset
-#     fo = 1  # simulate freq offset
-#     Ts = 1 / Fs  # calc sample period
-#     t = np.arange(0, Ts * len(rcc), Ts)  # create time vector
-#
-#     rcc = rcc * np.exp(2 * np.pi * 1j * fo * t[0:len(rcc)])  # freq shift
-#
+# # # test_bits = np.array([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1,
+# # #                       0, 0, 0, 1, 0, 1, 1,f 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0,
+# # #                       1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0,
+# # #                       0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1])
+# # #
+#test, TX_bits = modem.packet_and_modulate_bits(string_to_ascii("project lab is awesoem and dope i love project lab some much!!! dfjgkfldjglkdfj gklfdjg lsdjfkhdsjkfhjksdahfjkdshfuiehjn "), plots=False)
+# #
+# # # ==> DEMODULATE <===
+# Fs, rcc = wavfile.read("MQAM_modulated_wave.wav")
+# # add_noise = True
+# # assert Fs == 48000
+# #
+# # plt.plot(rcc)
+# # plt.show()
+# #
+# # if add_noise:
+# #     # Create and apply fractional delay filter and plot constellation maps
+# #     delay = 60  # fractional delay, in samples
+# #     N = 21  # number of taps
+# #     n = np.arange(N)  # 0,1,2,3...
+# #     h = np.sinc(n - (N - 1) / 2 - delay)  # calc filter taps
+# #     h *= np.hamming(N)  # window the filter to make sure it decays to 0 on both sides
+# #     h /= np.sum(h)  # normalize to get unity gain, we don't want to change the amplitude/power
+# #     rcc = np.convolve(rcc, h)  # apply filter
+# #
+# #     # # Apply a freq offset
+# #     fo = 1  # simulate freq offset
+# #     Ts = 1 / Fs  # calc sample period
+# #     t = np.arange(0, Ts * len(rcc), Ts)  # create time vector
+# #
+# #     rcc = rcc * np.exp(2 * np.pi * 1j * fo * t[0:len(rcc)])  # freq shift
+# #
 # raw_IQ = modem.demodulate_signal(rcc)
 # data = modem.get_data_from_stream(raw_IQ)
 # print(data)
